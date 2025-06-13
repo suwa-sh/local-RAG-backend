@@ -1,8 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(yarn:*)",
-      "Bash(node:*)",
+      "Bash(rye:*)",
+      "Bash(qlty:*)",
+      "Bash(docker compose:*)",
+      "Bash(make:*)",
       "Bash(echo:*)",
       "Bash(ls:*)",
       "Bash(tree:*)",
@@ -20,10 +22,7 @@
       "Bash(bash tmp/refactor_diff.sh:*)",
       "Read(~/.zshrc)"
     ],
-    "deny": [
-      "Bash(curl:*)"
-    ]
+    "deny": ["Bash(curl:*)"]
   },
-  "env": {
-  }
+  "env": {}
 }

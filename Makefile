@@ -1,0 +1,261 @@
+# =============================================================================
+# local-RAG-backend Makefile
+# =============================================================================
+
+# .envファイルが存在する場合は読み込む
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
+
+.PHONY: help setup test test-unit test-integration lint fmt check clean run ingest docker-up docker-down doctor
+
+# デフォルトターゲット
+help: ## ヘルプメッセージを表示
+	@echo "local-RAG-backend 開発コマンド"
+	@echo ""
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_\/-]+:.*?## / {printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# =============================================================================
+# 開発環境セットアップ
+# =============================================================================
+
+setup: ## 開発環境の初期セットアップ
+	@echo "🔧 開発環境セットアップ中..."
+	rye sync
+	@echo "✅ 依存関係インストール完了"
+	@echo ""
+	@echo "次のステップ:"
+	@echo "  1. make docker-up    # Neo4jを起動"
+	@echo "  2. make env-example  # 環境変数設定"
+	@echo "  3. make test         # テスト実行"
+
+env-example: ## .env.exampleファイルを.envにコピー
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "✅ .env ファイルを作成しました"; \
+		echo "📝 .env ファイルを編集して適切な値を設定してください"; \
+	else \
+		echo "⚠️  .env ファイルは既に存在します"; \
+	fi
+
+# =============================================================================
+# テスト関連
+# =============================================================================
+
+test: ## 全テストを実行（統合テスト除く）
+	@echo "🧪 テスト実行中..."
+	rye run pytest tests/ --ignore=tests/integration/ --tb=short
+
+test-unit: ## ユニットテストのみ実行
+	@echo "🧪 ユニットテスト実行中..."
+	rye run pytest tests/domain/ tests/adapter/ tests/usecase/ tests/main/ -v
+
+test-integration: ## 統合テストを実行
+	@echo "🧪 統合テスト実行中..."
+	@echo "⚠️  Neo4jとLLMエンドポイントが起動している必要があります"
+	rye run pytest tests/integration/ -v
+
+test-cov: ## カバレッジ付きテスト実行
+	@echo "🧪 カバレッジ付きテスト実行中..."
+	rye run pytest tests/ --ignore=tests/integration/ \
+		--cov=src --cov-report=html --cov-report=term
+
+test-watch: ## テストをwatch モードで実行
+	@echo "🧪 テストwatch モード開始..."
+	rye run pytest tests/ --ignore=tests/integration/ -f
+
+# =============================================================================
+# コード品質
+# =============================================================================
+
+lint: ## コード品質チェック
+	@echo "🔍 コード品質チェック中..."
+	qlty check
+
+fmt: ## コードフォーマット
+	@echo "🎨 コードフォーマット中..."
+	qlty fmt
+
+check: fmt lint test ## リント + テストを実行
+
+# =============================================================================
+# Docker関連
+# =============================================================================
+
+docker-up: ## Neo4jコンテナを起動（インデックス自動作成）
+	@echo "🐳 Neo4jコンテナ起動中..."
+	docker compose up -d
+	@echo "✅ Neo4j起動完了（Graphiti用インデックス自動作成済み）"
+	@echo "🌐 Neo4jブラウザ: http://localhost:7474"
+	@echo "   ユーザー名: neo4j"
+	@echo "   パスワード: password"
+
+docker-down: ## Neo4jコンテナを停止
+	@echo "🐳 Neo4jコンテナ停止中..."
+	docker compose down
+
+docker-logs: ## Neo4jのログを表示
+	docker compose logs -f neo4j
+
+docker-clean: ## Neo4jデータを完全削除
+	@echo "⚠️  Neo4jの全データが削除されます"
+	@read -p "続行しますか? [y/N]: " confirm && [ "$$confirm" = "y" ]
+	docker compose down -v
+	sudo rm -rf data/neo4j/data/*
+	@echo "✅ Neo4jデータ削除完了"
+
+
+# =============================================================================
+# ドキュメント登録（ingest）
+# =============================================================================
+
+## 基本的な使い方
+run: ## ドキュメント登録実行（例: make run GROUP=test DIR=path/to/docs）
+	@if [ -z "$(GROUP)" ] || [ -z "$(DIR)" ]; then \
+		echo "❌ GROUP と DIR を指定してください"; \
+		echo "例: make run GROUP=my-group DIR=/path/to/documents"; \
+		exit 1; \
+	fi
+	@echo "📄 ドキュメント登録実行中..."
+	@echo "  グループID: $(GROUP)"
+	@echo "  ディレクトリ: $(DIR)"
+	@echo "  ワーカー数: $${WORKERS:-3}（デフォルト）"
+	PYTHONPATH=. rye run python -m src.main.ingest $(GROUP) $(DIR) $${WORKERS:+--workers $$WORKERS}
+
+## テスト・サンプル実行
+ingest-simple: ## シンプルテスト（fixtures/test_simple/test.txt）
+	@echo "📄 シンプルテスト実行中..."
+	@echo "✅ テストファイル: fixtures/ingest/test_simple/test.txt"
+	$(MAKE) run GROUP=simple-test DIR=fixtures/ingest/test_simple
+
+ingest-example: ## サンプル実行（fixtures/test_documents/）
+	@echo "🚀 サンプル実行中..."
+	@echo "✅ サンプルファイル: fixtures/ingest/test_documents/"
+	$(MAKE) run GROUP=example DIR=fixtures/ingest/test_documents
+
+## パフォーマンス測定・分析
+ingest-benchmark: ## ベンチマーク実行（ログ記録・分析付き）
+	@mkdir -p logs
+	@echo "⚡ ベンチマーク実行中（3ワーカー）..."
+	@echo "開始時刻: $$(date)" | tee logs/benchmark.log
+	@PYTHONPATH=. rye run python -m src.main.ingest benchmark fixtures/ingest/test_documents 2>&1 | tee -a logs/benchmark.log
+	@echo "終了時刻: $$(date)" | tee -a logs/benchmark.log
+	@echo ""
+	@echo "📊 パフォーマンス分析実行中..."
+	@python scripts/analyze_api_calls.py logs/benchmark.log
+
+ingest-benchmark-fast: ## 高速ベンチマーク（5ワーカー）
+	@mkdir -p logs
+	@echo "🚀 高速ベンチマーク実行中（5ワーカー）..."
+	@echo "開始時刻: $$(date)" | tee logs/benchmark-fast.log
+	@PYTHONPATH=. rye run python -m src.main.ingest benchmark-fast fixtures/ingest/test_documents --workers 5 2>&1 | tee -a logs/benchmark-fast.log
+	@echo "終了時刻: $$(date)" | tee -a logs/benchmark-fast.log
+	@echo ""
+	@echo "📊 パフォーマンス分析実行中..."
+	@python scripts/analyze_api_calls.py logs/benchmark-fast.log
+
+analyze-performance: ## 最新のベンチマークログを分析
+	@if [ -f logs/benchmark-fast.log ]; then \
+		echo "📊 高速ベンチマーク分析中..."; \
+		python scripts/analyze_api_calls.py logs/benchmark-fast.log; \
+	elif [ -f logs/benchmark.log ]; then \
+		echo "📊 標準ベンチマーク分析中..."; \
+		python scripts/analyze_api_calls.py logs/benchmark.log; \
+	else \
+		echo "❌ 分析対象のログファイルが見つかりません"; \
+		echo "   実行: make ingest-benchmark または make ingest-benchmark-fast"; \
+	fi
+
+# =============================================================================
+# 開発支援
+# =============================================================================
+
+doctor: ## 環境診断
+	@echo "🩺 環境診断中..."
+	@echo ""
+	@echo "📦 Python環境:"
+	@python --version
+	@echo ""
+	@echo "📦 Rye環境:"
+	@rye --version
+	@echo ""
+	@echo "🐳 Docker環境:"
+	@docker --version
+	@docker compose version
+	@echo ""
+	@echo "📊 Neo4j接続確認:"
+	@if docker compose ps | grep -q "local-rag-neo4j.*healthy"; then \
+		echo "✅ Neo4j: 起動中"; \
+		docker exec local-rag-neo4j cypher-shell -u $${NEO4J_USER:-neo4j} -p $${NEO4J_PASSWORD:-password} \
+			"MATCH (n) RETURN count(n) as nodes;" 2>/dev/null || echo "⚠️  Neo4j: 接続エラー"; \
+	else \
+		echo "❌ Neo4j: 停止中"; \
+		echo "   実行: make docker-up"; \
+	fi
+	@echo ""
+	@echo "🌐 LLMエンドポイント確認:"
+	@if curl -s $${LLM_MODEL_URL:-http://localhost:4000}/v1/models -H "Authorization: Bearer $${LLM_MODEL_KEY:-sk-1234}" > /dev/null 2>&1; then \
+		echo "✅ LLM: $${LLM_MODEL_URL:-http://localhost:4000} 接続OK"; \
+	else \
+		echo "❌ LLM: $${LLM_MODEL_URL:-http://localhost:4000} 接続失敗"; \
+	fi
+	@echo ""
+	@echo "🔤 Embeddingエンドポイント確認:"
+	@if curl -s $${EMBEDDING_MODEL_URL:-http://localhost:11434}/v1/models > /dev/null 2>&1; then \
+		echo "✅ Embedding: $${EMBEDDING_MODEL_URL:-http://localhost:11434} 接続OK"; \
+	else \
+		echo "❌ Embedding: $${EMBEDDING_MODEL_URL:-http://localhost:11434} 接続失敗"; \
+	fi
+
+neo4j-query: ## Neo4jに直接クエリ実行（例: make neo4j-query QUERY="MATCH (n) RETURN n LIMIT 5"）
+	@if [ -z "$(QUERY)" ]; then \
+		echo "❌ QUERYを指定してください"; \
+		echo "例: make neo4j-query QUERY=\"MATCH (n) RETURN count(n)\""; \
+		exit 1; \
+	fi
+	docker exec local-rag-neo4j cypher-shell -u $${NEO4J_USER:-neo4j} -p $${NEO4J_PASSWORD:-password} "$(QUERY)"
+
+neo4j-browser: ## Neo4jブラウザURLを開く（macOS）
+	@echo "🌐 Neo4jブラウザを開いています..."
+	@echo "URL: http://localhost:7474"
+	@echo "ユーザー名: $${NEO4J_USER:-neo4j}"
+	@echo "パスワード: $${NEO4J_PASSWORD:-password}"
+	@if command -v open >/dev/null 2>&1; then \
+		open http://localhost:7474; \
+	else \
+		echo "ブラウザで http://localhost:7474 を開いてください"; \
+	fi
+
+show-env: ## 現在の環境変数設定を表示
+	@echo "🔧 環境変数設定:"
+	@echo "NEO4J_URL=${NEO4J_URL}"
+	@echo "LLM_MODEL_URL=${LLM_MODEL_URL}"
+	@echo "EMBEDDING_MODEL_URL=${EMBEDDING_MODEL_URL}"
+	@if [ -f .env ]; then \
+		echo ""; \
+		echo "📄 .env ファイル内容:"; \
+		cat .env | grep -v "^#" | grep -v "^$$"; \
+	else \
+		echo ""; \
+		echo "⚠️  .env ファイルが見つかりません"; \
+		echo "   実行: make env-example"; \
+	fi
+
+# =============================================================================
+# その他
+# =============================================================================
+
+deps-update: ## 依存関係を更新
+	@echo "📦 依存関係更新中..."
+	rye sync --update-all
+
+build: ## パッケージをビルド
+	@echo "🏗️  パッケージビルド中..."
+	rye build
+
+version: ## バージョン情報を表示
+	@echo "📋 バージョン情報:"
+	@echo "local-RAG-backend: v0.1.0"
+	@rye --version
+	@python --version
