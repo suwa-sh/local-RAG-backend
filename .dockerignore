@@ -1,0 +1,66 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Development
+.env
+.env.local
+*.log
+logs/
+
+# Data directories
+data/
+fixtures/
+
+# Documentation and development files
+*.md
+!README.md
+tmp/
+docs/
+scripts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Testing
+coverage.xml
+*.cover
+.hypothesis/
+
+# MCP Server (separate service)
+mcp_server/

@@ -96,6 +96,43 @@ make check
 
 ### 決定した内容は @DEVELOPER.md に記録してください
 
+## ■MCP Server運用コマンド
+
+### MCP Server起動・管理
+
+```bash
+# MCP Server起動（バックグラウンド）
+make docker-up
+
+# 動作状況確認
+docker compose ps
+
+# ログ確認
+docker compose logs graphiti-mcp --tail 20
+
+# 停止
+docker compose down
+```
+
+### MCP機能確認
+
+```bash
+# n8n.AI Agent設定例
+# MCP Server URL: http://localhost:8000/sse
+# Transport: SSE
+# 利用可能なMCP Tools: 8つ（search_memory_facts等）
+
+# 実際のMCP Tools使用確認は n8n.AI Agent から実行
+```
+
+### 重要な運用注意事項
+
+- **統合起動**: `make docker-up`でNeo4j + MCP Server同時起動
+- **FastMCP使用**: StandardMCPではなくFastMCPサーバーを使用
+- **SSE Transport固定**: stdioは使用不可、SSE（Server-Sent Events）のみサポート
+- **n8n.AI Agent推奨**: 直接的なPythonクライアントは技術的制約があり、n8n等のMCP対応クライアント使用を推奨
+- **環境変数統合**: LLM_MODEL_KEY → OPENAI_API_KEY などの自動マッピング実装済み
+
 ## ■開発コマンド
 
 ### プロジェクトセットアップ
@@ -160,21 +197,24 @@ rye show --installed
 ### システム構成
 
 - **登録時**: ingest.py -> unstructured.io -> graphiti lib -> Neo4j
-- **検索時**: n8n.AI Agent -> graphiti server -> Neo4j/ollama
-  <http://localhost:4000/v1>
+- **検索時**: n8n.AI Agent -> MCP Server -> graphiti lib -> Neo4j/ollama
+  <http://localhost:8000/sse>
 
 ### 主要コンポーネント
 
-1. **Graphiti Core**: グラフデータベースとの連携を管理
-2. **Unstructured.io**: ドキュメントの解析とチャンク化
-3. **Neo4j**: グラフデータベース（Vector DB）
-4. **Ollama**: LLMとEmbeddingモデルのホスティング
+1. **MCP Server**: Model Context Protocol準拠の検索サーバー（8つのMCP Tools提供）
+2. **Graphiti Core**: グラフデータベースとの連携を管理
+3. **Unstructured.io**: ドキュメントの解析とチャンク化
+4. **Neo4j**: グラフデータベース（Vector DB）
+5. **OpenAI API**: LLMとRerankモデル（高性能・高速）
+6. **Ollama**: Embeddingモデルのホスティング（日本語対応）
 
 ### 外部依存関係
 
 - Neo4j: bolt://localhost:7687
-- claude-code-server LLM: <http://localhost:4000/v1>
-- Ollama Embedder: <http://localhost:11434/v1>
+- MCP Server: <http://localhost:8000/sse> （SSE Transport）
+- OpenAI LLM: <https://api.openai.com/v1> （推奨：gpt-4o-mini）
+- Ollama Embedder: <http://localhost:11434/v1> （kun432/cl-nagoya-ruri-large）
 - システムライブラリ: poppler (PDF処理), tesseract-ocr (OCR)
 
 ## ■テストコードのルール

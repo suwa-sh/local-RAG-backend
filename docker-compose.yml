@@ -33,10 +33,10 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USER=${NEO4J_USER}
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
     volumes:
       - ./scripts:/scripts:ro
     networks:
@@ -45,28 +45,37 @@ services:
     restart: "no"
 
 
-  graphiti-mcp:
+  mcp-server:
     image: suwash/graphiti-mcp-server:latest
     container_name: local-rag-graphiti-mcp
     depends_on:
       neo4j:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - PATH=/root/.local/bin:${PATH}
       - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USER=${NEO4J_USER}
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
-      - LLM_MODEL_URL=${LLM_MODEL_URL}
-      - LLM_MODEL_KEY=${LLM_MODEL_KEY}
-      - LLM_MODEL_NAME=${LLM_MODEL_NAME}
-      - RERANK_MODEL_NAME=${RERANK_MODEL_NAME}
-      - EMBEDDING_MODEL_URL=${EMBEDDING_MODEL_URL}
-      - EMBEDDING_MODEL_KEY=${EMBEDDING_MODEL_KEY}
-      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
-      - GROUP_ID=${GROUP_ID}
     ports:
       - "8000:8000" # Expose the MCP server via HTTP for SSE transport
     command: ["uv", "run", "graphiti_mcp_server.py"]
+    networks:
+      - rag-network
+
+  ingest:
+    image: suwash/graphiti-ingest:latest
+    container_name: local-rag-ingest
+    profiles: ["ingest"]  # Only run when explicitly invoked
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - NEO4J_URL=bolt://neo4j:7687  # Docker network内ではサービス名で接続
+    volumes:
+      - ./data/input:/data/input:ro
+      - ./data/logs:/data/logs
     networks:
       - rag-network
 

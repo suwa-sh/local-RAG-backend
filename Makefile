@@ -8,7 +8,7 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-.PHONY: help setup test test-unit test-integration lint fmt check clean run ingest docker-build docker-up docker-down doctor
+.PHONY: help setup test test-unit test-integration lint fmt check clean run ingest docker-build docker-publish docker-up docker-down doctor
 
 # デフォルトターゲット
 help: ## ヘルプメッセージを表示
@@ -84,30 +84,54 @@ check: fmt lint test ## リント + テストを実行
 # =============================================================================
 docker-build: ## Dockerイメージをビルド
 	@echo "🐳 Dockerイメージビルド中..."
-	./scripts/build-mcp-server.sh
+	./scripts/container-build.sh
 	@echo "✅ Dockerイメージビルド完了"
 
-docker-up: ## Neo4jコンテナを起動（インデックス自動作成）
-	@echo "🐳 Neo4jコンテナ起動中..."
-	docker compose up -d
-	@echo "✅ Neo4j起動完了（Graphiti用インデックス自動作成済み）"
-	@echo "🌐 Neo4jブラウザ: http://localhost:7474"
-	@echo "   ユーザー名: neo4j"
-	@echo "   パスワード: password"
+docker-publish: ## Dockerイメージを公開
+	@echo "🐳 Dockerイメージを公開中..."
+	./scripts/container-publish.sh
+	@echo "✅ Dockerイメージ公開完了"
 
-docker-down: ## Neo4jコンテナを停止
-	@echo "🐳 Neo4jコンテナ停止中..."
+docker-up: ## 統合環境を起動（Neo4j + MCP Server）
+	@echo "🐳 統合環境起動中..."
+	docker compose up -d
+	@echo "✅ 統合環境起動完了"
+	@echo "🌐 Neo4jブラウザ: http://localhost:7474"
+	@echo "🌐 MCP Server: http://localhost:8000/sse"
+
+docker-down: ## 統合環境を停止
+	@echo "🐳 統合環境停止中..."
 	docker compose down
 
-docker-logs: ## Neo4jのログを表示
-	docker compose logs -f neo4j
+docker-logs: ## Dockerログを表示
+	docker compose logs -f
 
-docker-clean: ## Neo4jデータを完全削除
-	@echo "⚠️  Neo4jの全データが削除されます"
+docker-clean: ## Dockerデータを完全削除
+	@echo "⚠️  全データが削除されます"
 	@read -p "続行しますか? [y/N]: " confirm && [ "$$confirm" = "y" ]
 	docker compose down -v
-	sudo rm -rf data/neo4j/data/*
-	@echo "✅ Neo4jデータ削除完了"
+	rm -rf data/*
+	@echo "✅ データ削除完了"
+
+## 開発環境用Docker
+docker-dev-up: ## 開発環境を起動（Neo4jのみ）
+	@echo "🐳 開発環境起動中..."
+	docker compose -f docker-compose.dev.yml up -d
+	@echo "✅ 開発環境起動完了（Neo4jのみ）"
+	@echo "🌐 Neo4jブラウザ: http://localhost:7474"
+
+docker-dev-down: ## 開発環境を停止
+	@echo "🐳 開発環境停止中..."
+	docker compose -f docker-compose.dev.yml down
+
+## Dockerでのドキュメント登録
+docker-ingest: ## Dockerでドキュメント登録（data/input/配下を処理）
+	@echo "📄 Dockerでドキュメント登録実行中..."
+	@echo "  入力ディレクトリ: ./data/input/"
+	@echo "  グループID: $${GROUP_ID:-default}"
+	docker compose run --rm ingest
+	@echo "✅ 登録完了"
+	@echo "📊 ログ確認: tail -f data/logs/ingest-*.log"
 
 # =============================================================================
 # ドキュメント登録（ingest）
@@ -247,7 +271,3 @@ show-env: ## 現在の環境変数設定を表示
 deps-update: ## 依存関係を更新
 	@echo "📦 依存関係更新中..."
 	rye sync --update-all
-
-build: ## パッケージをビルド
-	@echo "🏗️  パッケージビルド中..."
-	rye build

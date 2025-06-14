@@ -12,11 +12,11 @@ graph TB
     AIAgent[MCP Client<br/>n8n.AI Agent など]
 
     subgraph "local-RAG-backend"
-        Ingest[ingest.py<br/>ドキュメント登録]
+        Ingest[ingest<br/>ドキュメント登録]
         MCPServer[MCP Server<br/>ナレッジ検索]
     end
 
-    Neo4j[Neo4j Database<br/>グラフDB + Vector DB]
+    Neo4j[Neo4j<br/>グラフDB + ベクトルDB]
     LLM[OpenAI API互換<br/>LLMサービス]
     Ollama[OpenAI API互換<br/>Embeddingモデル]
 
@@ -36,7 +36,7 @@ graph TB
 | MCP Client                     | 検索クライアント     | MCP Protocol           | MCP Toolsでナレッジ検索    |
 | ingest.py                      | 登録処理システム     | 直接ライブラリ呼び出し | 文書解析・チャンク化・登録 |
 | MCP Server                     | 検索インターフェース | MCP Tools              | 8つのツールで検索・管理    |
-| Neo4j Database                 | データ永続化         | Bolt Protocol          | グラフDB・ベクトルDB       |
+| Neo4j                          | データ永続化         | Bolt Protocol          | グラフDB・ベクトルDB       |
 | OpenAI API互換 LLMサービス     | LLM処理              | HTTPS                  | 構造化・リランク           |
 | OpenAI API互換 Embeddingモデル | Embedding生成        | HTTP                   | Embedding                  |
 
@@ -202,15 +202,15 @@ graph TD
 LLM_MODEL_URL=https://api.openai.com/v1
 LLM_MODEL_KEY=sk-xxx
 LLM_MODEL_NAME=gpt-4o-mini
-RERANK_MODEL_NAME=gpt-4o-mini
+RERANK_MODEL_NAME=gpt-4.1-nano
 
 # Embedding設定（ドキュメント登録・検索共通）
-EMBEDDING_MODEL_URL=http://localhost:11434/v1
+EMBEDDING_MODEL_URL=http://ollama:11434/v1
 EMBEDDING_MODEL_KEY=dummy
 EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
 
 # Neo4j設定（共通データベース）
-NEO4J_URI=bolt://localhost:7687
+NEO4J_URL=bolt://neo4j:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 
@@ -433,27 +433,6 @@ graph TD
 | バッチ登録による効率化 | save_batch メソッド        | 複数エピソードを一括登録       |
 | メモリ使用量の最適化   | ストリーミング処理         | 大きなファイルも段階的に処理   |
 
-#### 拡張性の設計
-
-```mermaid
-graph LR
-    subgraph "現在の実装"
-        A1[UnstructuredDocumentParser]
-        A2[GraphitiEpisodeRepository]
-        A3[基本チャンク戦略]
-    end
-
-    subgraph "将来の拡張"
-        B1[PDFParser<br/>DocxParser<br/>CustomParser]
-        B2[ElasticsearchRepository<br/>PineconeRepository]
-        B3[セマンティックチャンク<br/>オーバーラップチャンク]
-    end
-
-    A1 -.->|インターフェース実装| B1
-    A2 -.->|インターフェース実装| B2
-    A3 -.->|戦略パターン| B3
-```
-
 ### パフォーマンス最適化の知見
 
 #### LLM API選択指針
@@ -473,7 +452,7 @@ LLM_MODEL_NAME=gpt-4o-mini                # 1.24秒/回、高精度
 ```ini
 # 問題のある構成例
 LLM_MODEL_URL=http://localhost:4000/v1     # claude-code-server（極度の遅延）
-LLM_MODEL_URL=http://localhost:11434/v1    # ollama gemma2/4b（遅延・エラー頻発）
+LLM_MODEL_URL=http://localhost:11434/v1    # ollama gemma3/4b（遅延・エラー頻発）
 LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit・フォーマットエラー
 ```
 
@@ -507,6 +486,18 @@ LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit・フォーマットエ�
 
 ## 仕様 / ナレッジ検索
 
+### MCP Server実装詳細
+
+**実装方式**: FastMCP（mcp.server.fastmcp.FastMCP）
+**トランスポート**: SSE（Server-Sent Events）固定
+**エンドポイント**: `http://localhost:8000/sse`
+
+### 接続確認済みクライアント
+
+✅ **n8n.AI Agent**: 動作確認済み（推奨）
+❌ **直接Pythonクライアント**: 技術的制約（起動時のハンドシェイクでエラー）で実現できない
+✅ **統合環境**: `make docker-up`でNeo4j + MCP Server起動
+
 ### 主要検索Tools
 
 | Tool                  | 機能           | 用途                 | n8n.AI Agent使用例 |
@@ -524,51 +515,53 @@ LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit・フォーマットエ�
 | `delete_entity_edge` | 事実削除       | 情報削除       |
 | `clear_graph`        | グラフクリア   | データリセット |
 
+### 環境変数マッピング（実装済み）
+
+MCP Serverでは以下の環境変数マッピングが自動実行される：
+
+```python
+# LLM API統合
+LLM_MODEL_KEY → OPENAI_API_KEY   # GraphitiライブラリとOpenAIライブラリ互換性
+NEO4J_URL → NEO4J_URI           # URL/URI命名統一
+LLM_MODEL_NAME → MODEL_NAME     # プレフィックス統一
+RERANK_MODEL_NAME → SMALL_MODEL_NAME    # 用途別名前統一
+EMBEDDING_MODEL_NAME → EMBEDDER_MODEL_NAME  # 命名統一
+```
+
 ## 開発・運用
 
 ### ディレクトリ構成
 
 ```
 local-RAG-backend/
-├── src/                    # アプリケーションコード
-│   ├── main/              # プレゼンテーション層
-│   │   ├── ingest.py      # CLIエントリーポイント
-│   │   └── settings.py    # 設定管理
-│   ├── usecase/           # ユースケース層
-│   │   └── register_document_usecase.py
-│   ├── domain/            # ドメイン層
-│   │   ├── document.py    # Document値オブジェクト
-│   │   ├── chunk.py       # Chunk値オブジェクト
-│   │   ├── episode.py     # Episode値オブジェクト
-│   │   └── group_id.py    # GroupId値オブジェクト
-│   └── adapter/           # アダプター層
-│       ├── graphiti_episode_repository.py
-│       ├── unstructured_document_parser.py
-│       ├── filesystem_document_reader.py
-│       ├── entity_cache.py
-│       └── logging_utils.py
-├── mcp_server/            # MCP Server（検索機能）
-│   ├── graphiti_mcp_server.py  # MCPサーバー実装
-│   ├── .env.example           # 設定例
-│   └── docker-compose.yml     # Docker構成
-├── tests/                 # テストコード
-│   ├── domain/           # ドメイン層テスト
-│   ├── usecase/          # ユースケース層テスト
-│   ├── adapter/          # アダプター層テスト
-│   ├── main/             # プレゼンテーション層テスト
-│   └── integration/      # 統合テスト
-├── fixtures/             # テストデータ
-│   └── ingest/
-│       ├── test_simple/  # シンプルテスト用
-│       └── test_documents/ # サンプルファイル
-├── scripts/              # 開発・運用支援スクリプト
-├── .env                  # 環境変数
-├── CLAUDE.md            # Claude Code用ガイダンス
-├── DEVELOPER.md         # 開発者向け詳細ドキュメント
-├── README.md            # ユーザー向けドキュメント
-├── Makefile             # 開発・運用コマンド
-├── pyproject.toml       # Python設定（rye管理）
-└── tmp/                 # 一時ファイル・作業用
+├── src/                        # アプリケーションコード
+│   ├── main/                   # プレゼンテーション層
+│   ├── usecase/                # ユースケース層
+│   ├── domain/                 # ドメイン層
+│   └── adapter/                # アダプター層
+├── mcp_server/                 # MCP Server（検索機能）
+├── data/                       # Dockerボリューム用（.gitignore対象）
+│   ├── input/                  # ドキュメント投入ディレクトリ
+│   ├── logs/                   # 実行ログ
+│   └── neo4j/                  # Neo4jデータ永続化
+├── tests/                      # テストコード
+│   ├── domain/                 # ドメイン層テスト
+│   ├── usecase/                # ユースケース層テスト
+│   ├── adapter/                # アダプター層テスト
+│   ├── main/                   # プレゼンテーション層テスト
+│   └── integration/            # 統合テスト
+├── fixtures/                   # テストデータ
+├── scripts/                    # 開発・運用支援スクリプト
+├── .env                        # 環境変数
+├── docker-compose.yml          # 利用者向け統合環境
+├── docker-compose.dev.yml      # 開発者向け最小環境
+├── Dockerfile                  # Ingestサービス用
+├── CLAUDE.md                   # Claude Code用ガイダンス
+├── DEVELOPER.md                # 開発者向け詳細ドキュメント
+├── README.md                   # ユーザー向けドキュメント
+├── Makefile                    # 開発・運用コマンド
+├── pyproject.toml              # Python設定（rye管理）
+└── tmp/                        # 一時ファイル・作業用
 ```
 
 ### 開発規約
@@ -596,14 +589,24 @@ local-RAG-backend/
 
 - mainブランチへの直接プッシュは禁止
 - 機能ブランチで開発し、PRでマージ
-- コミットメッセージは日本語で簡潔に
+- コミットメッセージはconventional commitに従う
 
 ### 環境構築手順
 
+#### 利用者向け（Docker環境）
+
+1. リポジトリのクローン
+2. `.env` ファイルの作成（`.env.example`を参考）
+3. `docker compose up -d` で統合環境起動（Neo4j + MCP Server）
+4. `docker compose run --rm ingest` でドキュメント登録
+
+#### 開発者向け（ローカル環境）
+
 1. リポジトリのクローン
 2. `rye sync` で依存関係インストール
-3. `docker compose up -d` でNeo4j起動
+3. `docker compose -f docker-compose.dev.yml up -d` でNeo4j起動
 4. `.env` ファイルの作成（`.env.example`を参考）
+5. `rye run python -m src.main.ingest` で開発・テスト
 
 ### よく使うコマンド
 
@@ -623,6 +626,6 @@ qlty smells
 qlty metrics
 
 # Neo4j起動/停止
-docker compose up -d
-docker compose down
+docker compose up -d -f docker-compose.dev.yml
+docker compose down -f docker-compose.dev.yml
 ```

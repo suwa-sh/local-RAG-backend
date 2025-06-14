@@ -1,159 +1,108 @@
 # local-RAG-backend
 
-**v0.2.0** - 高性能なローカルRAGシステム（登録・検索対応）
+ローカル環境のdocker composeで完結するRAGシステムのバックエンドです。
+各種ドキュメントを登録し、MCP serverで検索できます。
 
-ローカル環境で完結するRAGシステムのバックエンドです。28種類のファイル形式をサポートし、並列処理による高速な文書登録と、MCP Server経由での検索機能を提供します。
+## 特徴
 
-## ✨ 特徴
+- **28種類のファイル形式に対応**: `unstructured`を利用して、PDF、Office、テキスト、画像など幅広いファイル形式に対応しています。
+- **MCP検索機能**: `graphiti memory MCP Server`の実装を流用して、Model Context Protocol対応の検索に対応しています。
+- **検索精度を上げる仕組みが組み込み済み**: `graphiti`を利用して、ベクトル検索 x グラフ検索 x 全文検索の結果を、関係性でリランキングした結果を返しています。
 
-- **高速並列処理**: 3-5ワーカーで並列実行（約50秒で3ファイル処理）
-- **28種類ファイル対応**: PDF、Office、テキスト、画像など幅広いファイル形式
-- **MCP検索機能**: Model Context Protocol対応の8つの検索・管理ツール
-- **統合設定管理**: 単一の.envファイルで登録・検索の両機能を管理
-- **本格運用対応**: 設定管理、エラーハンドリング、テストカバレッジ完備
-- **DDD設計**: ドメイン駆動設計による保守性の高いアーキテクチャ
 
-## 🏗️ システム構成
+```mermaid
+graph TB
+    User[ユーザー]
+    AIAgent[MCP Client]
 
-### 登録処理（v0.1.0実装済み）
+    subgraph "local-RAG-backend"
+        Ingest[ドキュメント登録]
+        MCPServer[ナレッジ検索]
+    end
 
+    Neo4j[Neo4j<br/>グラフDB + ベクトルDB]
+    LLM[OpenAI API互換<br/>LLMサービス]
+    Ollama[OpenAI API互換<br/>Embeddingモデル]
+
+    User -->|コマンド実行| Ingest
+    AIAgent -->|MCP Tools呼び出し| MCPServer
+    Ingest -->|ドキュメント登録| Neo4j
+    MCPServer -->|検索クエリ実行| Neo4j
+    Ingest --> LLM
+    Ingest --> Ollama
+    MCPServer --> LLM
+    MCPServer --> Ollama
 ```
-CLI → ユースケース層 → アダプター層 → 外部ライブラリ
-                    ├── Unstructured.io (文書解析)
-                    ├── Graphiti (グラフDB操作)
-                    └── Neo4j (データ保存)
-```
 
-### 検索処理（v0.2.0実装済み）
 
-```
-MCP Client → MCP Server (SSE) → Graphiti Core → Neo4j + LLM/Embedding
-   ↓              ↓                   ↓
-n8n.AI Agent   8つのTools         日本語検索対応
-```
+## Getting Started
 
-#### MCP Tools（8つ）
-1. `search_memory_facts` - 事実検索（メイン機能）
-2. `search_memory_nodes` - ノード検索
-3. `get_entity_edge` - 個別事実取得
-4. `get_episodes` - エピソード一覧
-5. `add_memory` - エピソード追加
-6. `delete_entity_edge` - 事実削除
-7. `clear_graph` - グラフクリア
+### 1. 前提
 
-## 🚀 クイックスタート
+- OpenAPI互換のLLM APIが利用できる
+  - ベクトル検索に利用するEmbeddingモデル
+  - グラフ検索に利用するLLMモデル
+  - リランキングに利用する形容なLLMモデル
+- EmbeddingモデルとLLMモデルは、別のURLを指定できます
+  - 例: 
+    - Embeddingモデル: `ローカルのOllama`
+    - LLMモデル: `OpenAI`
+      - グラフ検索: o4-mini
+      - リランキング: gpt-4.1-nano
+  - 注意:
+    - OpenRouterの場合、rate limitでエラーになることが多いです
+    - LLMモデルをローカルのOllamaで利用する場合、フォーマット指定のレスポインスを、数秒で返すパフォーマンスが必要です。
 
-### 1. 環境セットアップ
+### 2. インストール
 
 ```bash
-# 開発環境構築
-make setup
+# 実行ディレクトリの作成
+mkdir path/to/RAG/
+cd path/to/RAG/
+
+# ファイルのダウンロード
+curl -Lo docker-compose.yml https://raw.githubusercontent.com/suwa-sh/local-RAG-backend/refs/heads/main/docker-compose.yml
+curl -Lo .env https://raw.githubusercontent.com/suwa-sh/local-RAG-backend/refs/heads/main/.env.example
 
 # 環境変数設定
-make env-example
-# .envファイルを編集して適切な値を設定
+vi .env
 
-# Neo4j起動
-make docker-up
+# 起動
+docker compose up -d
 ```
 
-### 2. 動作確認
+### 3. ドキュメント登録
 
 ```bash
-# テスト実行
-make test
+# ドキュメントを配置
+cp -r /path/to/documents/* path/to/RAG/data/imput/
 
-# 登録・検索統合テスト（推奨）
-make test-mcp
-
-# 実際のファイルで動作確認
-make ingest-simple
-```
-
-## 📄 ドキュメント登録
-
-### 基本的な使い方
-
-```bash
-# 標準実行（3ワーカー並列処理）
-rye run python -m src.main.ingest <directory>
-
-# ワーカー数指定
-rye run python -m src.main.ingest <directory> --workers 5
-
-# 環境変数でグループID指定
-GROUP_ID=my-group rye run python -m src.main.ingest <directory>
-```
-
-### Makefileでの実行
-
-```bash
-# 基本的な実行
-make run DIR=/path/to/documents
-make run DIR=/path/to/documents GROUP_ID=my-group WORKERS=5  # グループID・ワーカー数指定
-
-# テスト・サンプル実行
-make ingest-simple               # シンプルテスト
-make ingest-example              # サンプル実行
-
-# パフォーマンス測定（ログ記録・分析付き）
-make ingest-benchmark            # 3ワーカー、約50秒
-make ingest-benchmark-fast       # 5ワーカー、約49秒
-
-# ログ分析
-make analyze-performance
-```
-
-### パフォーマンス調整
-
-| ワーカー数 | 適用場面   | 実行時間（3ファイル） |
-| ---------- | ---------- | --------------------- |
-| 1          | デバッグ時 | 約3分                 |
-| 3（推奨）  | 標準利用   | 約50秒                |
-| 5          | 高速化重視 | 約49秒                |
-
-## 🔍 検索機能（v0.2.0実装済み）
-
-### MCP Server起動・管理
-
-```bash
-# MCP Server起動（バックグラウンド）
-make mcp-server-start
-
-# 動作状況確認
-make mcp-server-status
+# 一括登録実行
+docker compose run --rm ingest
 
 # ログ確認
-make mcp-server-logs
-
-# 停止
-make mcp-server-stop
+tail ./data/logs/ingest-*.log
 ```
 
-### 検索テスト
+### 4. ナレッジ検索
 
-```bash
-# 登録・検索統合テスト
-make test-mcp              # 標準テスト
-make test-mcp-quick        # 高速テスト
-make test-mcp-full         # 完全テスト
+- n8n / AI Agent node や Claude DeskctopなどのMCP Clientから接続
 
-# 個別検索テスト
-make test-search QUERY="RAGシステム"
+    ```json
+    {
+        "mcpServers": {
+            "graphiti-memory": {
+                "transport": "sse",
+                "url": "http://localhost:8000/sse"
+            }
+        }
+    }
+    ```
 
-# 詳細検索テスト（スクリプト直接実行）
-python scripts/test_mcp_search.py "検索語"
-python scripts/test_mcp_search.py --all-tests "システム"
-python scripts/test_mcp_search.py --search-nodes "エンティティ"
-python scripts/test_mcp_search.py --episodes-only
-```
-
-### n8n.AI Agent連携例
-
-MCP Serverはポート8000（SSE transport）で起動し、n8n.AI AgentなどのMCP Clientから利用できます：
+**利用可能なMCP Tools**:
 
 ```javascript
-// 事実検索
+// 事実検索（メイン機能）
 const result = await mcp.call_tool("search_memory_facts", {
     query: "RAGシステムについて",
     group_ids: ["default"],
@@ -172,13 +121,19 @@ const episodes = await mcp.call_tool("get_episodes", {
     group_id: "default",
     last_n: 10
 });
+
+// エピソード追加
+const addResult = await mcp.call_tool("add_memory", {
+    name: "新しい情報",
+    episode_body: "ここに内容を記述",
+    group_id: "default",
+    source: "text"
+});
 ```
 
-## ⚙️ 設定
+## 設定
 
-### 環境変数
-
-#### 推奨設定（実証済み高性能構成）
+### .envファイルの例
 
 ```ini
 # Neo4jデータベース
@@ -186,38 +141,29 @@ NEO4J_URL=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 
-# LLMモデル（最高性能：1.24秒/回）
+# LLMモデル
 LLM_MODEL_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
 LLM_MODEL_KEY=your_openai_api_key
 
-# Rerankモデル（小型モデル用、省略時はLLM_MODEL_NAMEと同じ）
+# Rerankモデル
 RERANK_MODEL_NAME=gpt-4.1-nano
 
-# Embeddingモデル（ローカル推論）
+# Embeddingモデル
 EMBEDDING_MODEL_URL=http://localhost:11434/v1
 EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
 EMBEDDING_MODEL_KEY=dummy
 
-# チャンク設定（最適化済み）
+# テナント識別子
+GROUP_ID=default
+
+# チャンク設定（オプション）
 CHUNK_SIZE_MAX=2000
 CHUNK_SIZE_MIN=200
 CHUNK_OVERLAP=0
-
-# テナント識別子設定（必須）
-GROUP_ID=default
 ```
 
-#### ⚠️ 避けるべき設定
-
-```ini
-# 以下の設定は実測で問題が確認されています
-LLM_MODEL_URL=http://localhost:4000/v1     # claude-code-server（遅延大）
-LLM_MODEL_URL=http://localhost:11434/v1    # ollama LLM（エラー頻発）
-LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit問題
-```
-
-### サポートファイル形式（28種類）
+### サポートファイル形式
 
 | カテゴリ             | 対応形式                             |
 | -------------------- | ------------------------------------ |
@@ -232,116 +178,8 @@ LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit問題
 | **メール**           | eml, msg, p7s                        |
 | **画像**             | bmp, heic, jpeg, jpg, png, tiff, tif |
 
-## 🧪 テスト・品質管理
 
-### テスト種類
+## 既知の課題
 
-| コマンド                | 対象                             | 実行時間 | 説明                          |
-| ----------------------- | -------------------------------- | -------- | ----------------------------- |
-| `make test`             | ユニット・結合テスト（85テスト） | 約2秒    | 外部API不要の高速テスト       |
-| `make test-integration` | Neo4j接続テスト                  | 約10秒   | インフラ接続確認              |
-| `make test-mcp`         | 登録・検索統合テスト             | 約60秒   | v0.2.0全機能の動作確認        |
-| `make test-mcp-quick`   | 登録・検索高速テスト             | 約40秒   | 基本機能のみの動作確認        |
-| `make ingest-simple`    | 登録E2Eテスト                    | 約30秒   | 実際のAPI使用（登録のみ）     |
-
-### 品質チェック
-
-```bash
-# コード品質総合チェック
-make check              # format + lint + test
-
-# 個別実行
-make fmt               # コードフォーマット
-make lint              # 静的解析
-make test-cov          # カバレッジ付きテスト
-```
-
-### 開発フロー
-
-```bash
-# 1. 基本品質チェック
-make test
-
-# 2. インフラ接続確認
-make test-integration
-
-# 3. v0.2.0 統合機能確認（推奨）
-make test-mcp
-
-# 4. 個別機能確認
-make ingest-example      # 登録機能のみ
-make test-search QUERY="テスト"  # 検索機能のみ
-
-# 5. パフォーマンス分析
-make ingest-benchmark
-make analyze-performance
-```
-
-## 📊 パフォーマンス
-
-### 実測値（3ファイル処理）
-
-- **実行時間**: 49-50秒（並列処理）
-- **処理内訳**: LLM 30.9%、Embedding 69.1%
-- **スループット**: 約6ファイル/分
-- **91%高速化**: 9分→50秒（初期シーケンシャル処理比）
-
-### ボトルネック分析
-
-1. **Embeddingモデル**: kun432/cl-nagoya-ruri-large（3.13秒/回）
-2. **LLMモデル**: OpenAI GPT-4o mini（1.24秒/回）- 高速
-3. **並列度**: 3ワーカーが最適（3ファイル処理時）
-
-## 🔧 トラブルシューティング
-
-### よくある問題と解決方法
-
-#### 実行が遅い・エラーが多発する場合
-
-1. **LLM設定の確認**
-
-   ```bash
-   # 推奨設定に変更
-   LLM_MODEL_URL=https://api.openai.com/v1
-   LLM_MODEL_NAME=gpt-4o-mini
-   ```
-
-2. **フォーマットエラーが頻発する場合**
-
-   - OpenRouter使用時: 直接API接続に変更
-   - ローカルLLM使用時: 外部APIに変更
-
-3. **パフォーマンス分析**
-
-   ```bash
-   # 実行時間とボトルネック分析
-   make ingest-benchmark
-   make analyze-performance
-   ```
-
-#### API設定のベストプラクティス
-
-- **OpenAI API**: 最も安定・高速（推奨）
-- **ローカルLLM**: 実用性に課題あり
-- **APIゲートウェイ**: rate limit問題のリスク
-
-詳細な分析は `scripts/analyze_api_calls.py` を使用してください。
-
-## 🗺️ ロードマップ
-
-### v0.1.0（実装完了）
-
-- ✅ ドキュメント登録機能（28ファイル形式対応）
-- ✅ 高速並列処理（91%性能改善）
-- ✅ 本格運用対応（設定管理・エラーハンドリング・テスト）
-
-### v0.2.0（実装完了）
-
-- ✅ MCP Server検索機能（8つのMCP Tools）
-- ✅ LLM/Embedding分離設定対応
-- ✅ 統合テスト基盤（登録・検索）
-- ✅ n8n.AI Agent連携対応
-
-### v1.0.0（将来）
-
-- 🔄 パフォーマンス監視（langfuse連携）
+- モニタリングの仕組みが考慮されていない
+  - 検索の内部でなにが起きているかを可視化する仕組みが必要
