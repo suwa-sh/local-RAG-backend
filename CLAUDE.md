@@ -197,7 +197,7 @@ rye show --installed
 ### システム構成
 
 - **登録時**: ingest.py -> unstructured.io -> graphiti lib -> Neo4j
-- **検索時**: n8n.AI Agent -> MCP Server -> graphiti lib -> Neo4j/ollama
+- **検索時**: n8n.AI Agent などの MCP Client -> MCP Server -> graphiti lib -> Neo4j/ollama
   <http://localhost:8000/sse>
 
 ### 主要コンポーネント

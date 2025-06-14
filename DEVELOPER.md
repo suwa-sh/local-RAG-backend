@@ -8,71 +8,70 @@
 
 ```mermaid
 graph TB
-    User[ユーザー<br/>ドキュメント管理者]
-    AIAgent[MCP Client<br/>n8n.AI Agent など]
+    User[システム管理者]
+    AIAgent[MCP Client]
 
     subgraph "local-RAG-backend"
-        Ingest[ingest<br/>ドキュメント登録]
-        MCPServer[MCP Server<br/>ナレッジ検索]
+        Ingest[ドキュメント登録<br/>unstructured x graphiti]
+        MCPServer[ナレッジ検索<br/>graphiti MCP Server]
+        Neo4j[Neo4j]
     end
 
-    Neo4j[Neo4j<br/>グラフDB + ベクトルDB]
-    LLM[OpenAI API互換<br/>LLMサービス]
-    Ollama[OpenAI API互換<br/>Embeddingモデル]
+    LLM[LLMモデル<br/>OpenAI API互換]
+    Ollama[Embeddingモデル<br/>OpenAI API互換]
 
-    User -->|CLIコマンド実行| Ingest
+    User -->|コマンド実行| Ingest
     AIAgent -->|MCP Tools呼び出し| MCPServer
     Ingest -->|ドキュメント登録| Neo4j
     MCPServer -->|検索クエリ実行| Neo4j
-    Ingest --> LLM
-    Ingest --> Ollama
-    MCPServer --> LLM
-    MCPServer --> Ollama
+    Ingest ---> LLM
+    Ingest ---> Ollama
+    MCPServer ---> LLM
+    MCPServer ---> Ollama
 ```
 
 | 要素名                         | 責務                 | 通信方式               | 機能                       |
 | ------------------------------ | -------------------- | ---------------------- | -------------------------- |
-| ユーザー                       | ドキュメント管理者   | コマンドライン         | CLIでドキュメント登録      |
+| システム管理者                 | ドキュメント管理     | コマンドライン         | CLIでドキュメント登録      |
 | MCP Client                     | 検索クライアント     | MCP Protocol           | MCP Toolsでナレッジ検索    |
-| ingest.py                      | 登録処理システム     | 直接ライブラリ呼び出し | 文書解析・チャンク化・登録 |
+| ingest                         | 登録処理システム     | 直接ライブラリ呼び出し | 文書解析・チャンク化・登録 |
 | MCP Server                     | 検索インターフェース | MCP Tools              | 8つのツールで検索・管理    |
 | Neo4j                          | データ永続化         | Bolt Protocol          | グラフDB・ベクトルDB       |
-| OpenAI API互換 LLMサービス     | LLM処理              | HTTPS                  | 構造化・リランク           |
-| OpenAI API互換 Embeddingモデル | Embedding生成        | HTTP                   | Embedding                  |
+| LLMモデル OpenAI API互換       | LLM処理              | HTTP/HTTPS             | 構造化・リランク           |
+| Embeddingモデル OpenAI API互換 | Embedding生成        | HTTP/HTTPS             | ベクトル化                 |
 
 ### コンテナ図
 
 ```mermaid
 graph TB
     subgraph "ドキュメント登録"
-        CLI[CLI Application<br/>ingest.py]
-        DPL[Document Processing<br/>Library]
+        CLI[ingest.py]
+        DPL[unstructured]
     end
 
     subgraph "ナレッジ検索"
-        MCPTools[MCP Tools<br/>検索・管理機能]
-        GraphitiCore[Graphiti Core<br/>Library]
-        MCPConfig[MCP Config<br/>LLM/Embedder分離設定]
+        MCPTools[MCP Tools]
+        MCPConfig[MCP Config]
     end
 
+    GraphitiCore[Graphiti Core]
+
     subgraph "Data Layer"
-        Neo4j[Neo4j Database<br/>グラフ + ベクトル]
+        Neo4j[Neo4j]
     end
 
     subgraph "External Services"
-        OpenAI[OpenAI API<br/>gpt-4o-mini]
-        Ollama[Ollama Server<br/>cl-nagoya-ruri-large]
+        OpenAI[LLMモデル]
+        Ollama[Embeddingモデル]
     end
 
     CLI --> DPL
     DPL --> GraphitiCore
-    MCPTools --> GraphitiCore
-    MCPConfig --> GraphitiCore
+    MCPTools --> MCPConfig
+    MCPTools ---> GraphitiCore
     GraphitiCore --> Neo4j
-    DPL --> OpenAI
-    DPL --> Ollama
-    MCPConfig --> OpenAI
-    MCPConfig --> Ollama
+    GraphitiCore --> OpenAI
+    GraphitiCore --> Ollama
 ```
 
 ### コンポーネント図 / ドキュメント登録
@@ -629,3 +628,100 @@ qlty metrics
 docker compose up -d -f docker-compose.dev.yml
 docker compose down -f docker-compose.dev.yml
 ```
+
+
+## 今後の計画
+
+
+- ドキュメント登録
+  - LLMモデルのrate limitでエラーになる
+    - graphiti内でエクスポーネンシャルバックオフのリトライがかかっている
+    - それでもrate limitエラーが発生している
+    - `Rate limit exceeded. Please try again later.`エラー時にレスポンスを解析して、待機後にリトライ
+    - イメージ
+
+        ```py
+        try:  
+            response = await client.generate_response(messages)  
+        except RateLimitError as e:  
+            retry_after = extract_retry_after_time(e)  
+            if retry_after:  
+                print(f"Rate limit exceeded. Retry after {retry_after} seconds")  
+                await asyncio.sleep(retry_after)  
+                # 再試行  
+            else:  
+                print("Rate limit exceeded, but retry time unknown")
+        ```
+
+        ```py
+        def extract_retry_after_time(rate_limit_error: RateLimitError) -> int | None:
+            """Rate limitエラーから回復時間（秒）を抽出"""
+            original_error = rate_limit_error.__cause__
+
+            # OpenAI, Anthropic, Groq いずれも Retry-After ヘッダーで秒数を返す
+            if hasattr(original_error, 'response') and original_error.response:
+                retry_after = original_error.response.headers.get('retry-after')
+                if retry_after:
+                    try:
+                        return int(float(retry_after)) + 1 # 境界値を考慮して1秒追加
+                    except (ValueError, TypeError):
+                        pass  # 変換できない場合はNone
+            return 120 + 1  # 回復時間が取得できない場合、固定で120秒 + 1秒
+        ```
+
+- ナレッジ検索
+  - 検索の内部でなにが起きているかがわかりにくい
+    - ログには出力されている
+    - カスタムログハンドラー経由でlangfuse連携して内部の挙動をモニタリング
+    - イメージ
+        - Langfuse統合ハンドラー
+
+            ```py
+            import logging  
+            from langfuse import Langfuse  
+            from langfuse.decorators import observe  
+            
+            class LangfuseHandler(logging.Handler):  
+                def __init__(self):  
+                    super().__init__()  
+                    self.langfuse = Langfuse()  
+                    
+                def emit(self, record):  
+                    # LLMリクエスト/レスポンスの検出  
+                    if hasattr(record, 'llm_request') or hasattr(record, 'embedding_request'):  
+                        self._trace_llm_call(record)  
+                
+                def _trace_llm_call(self, record):  
+                    # Langfuseへのトレース送信ロジック  
+                    pass
+            ```
+
+        - ログレコードの拡張
+
+            ```py
+            # カスタムフィルターでログレコードを拡張  
+            class LLMContextFilter(logging.Filter):  
+                def filter(self, record):  
+                    # スタックトレースから呼び出し元を特定  
+                    if 'generate_response' in record.funcName:  
+                        record.llm_request = True  
+                        record.model_info = self._extract_model_info(record)  
+                    elif 'embedder.create' in str(record.getMessage()):  
+                        record.embedding_request = True  
+                    return True
+            ```
+
+        - 統合の実装 openai_client.py:31 で使用されているloggerに対してハンドラーを追加：
+
+            ```py
+            # 初期化時に設定  
+            llm_logger = logging.getLogger('graphiti_core.llm_client.openai_client')  
+            search_logger = logging.getLogger('graphiti_core.search.search')  
+            
+            langfuse_handler = LangfuseHandler()  
+            llm_context_filter = LLMContextFilter()  
+            
+            llm_logger.addHandler(langfuse_handler)  
+            llm_logger.addFilter(llm_context_filter)  
+            search_logger.addHandler(langfuse_handler)
+            ```

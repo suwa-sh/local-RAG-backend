@@ -1,56 +1,53 @@
 # local-RAG-backend
 
-ローカル環境のdocker composeで完結するRAGシステムのバックエンドです。
-各種ドキュメントを登録し、MCP serverで検索できます。
+ローカル環境のdocker composeで完結するRAGシステムのバックエンドです。各種ドキュメントを登録し、MCP serverで検索できます。
 
 ## 特徴
 
-- **28種類のファイル形式に対応**: `unstructured`を利用して、PDF、Office、テキスト、画像など幅広いファイル形式に対応しています。
-- **MCP検索機能**: `graphiti memory MCP Server`の実装を流用して、Model Context Protocol対応の検索に対応しています。
-- **検索精度を上げる仕組みが組み込み済み**: `graphiti`を利用して、ベクトル検索 x グラフ検索 x 全文検索の結果を、関係性でリランキングした結果を返しています。
-
+- **幅広いファイル形式に対応**: `unstructured`を利用して、PDF、Office、テキスト、画像など28種類のファイル形式に対応しています。
+- **MCP検索機能**: `graphiti MCP Server`の実装を流用して、Model Context Protocol対応の検索を提供します。
+- **高度なRAG機能**: `graphiti`を利用して、ベクトル検索 + グラフ検索 + 全文検索の結果を、関係性でリランキングした結果を返します。
+- **時系列の関係性の変化を追跡**: `graphiti`のエピソード機能で、登録したドキュメント内の概念の関係性の変化を追跡できます。
 
 ```mermaid
 graph TB
-    User[ユーザー]
+    User[システム管理者]
     AIAgent[MCP Client]
 
     subgraph "local-RAG-backend"
-        Ingest[ドキュメント登録]
-        MCPServer[ナレッジ検索]
+        Ingest[ドキュメント登録<br/>unstructured x graphiti]
+        MCPServer[ナレッジ検索<br/>graphiti MCP Server]
+        Neo4j[Neo4j]
     end
 
-    Neo4j[Neo4j<br/>グラフDB + ベクトルDB]
-    LLM[OpenAI API互換<br/>LLMサービス]
-    Ollama[OpenAI API互換<br/>Embeddingモデル]
+    LLM[LLMモデル<br/>OpenAI API互換]
+    Ollama[Embeddingモデル<br/>OpenAI API互換]
 
     User -->|コマンド実行| Ingest
     AIAgent -->|MCP Tools呼び出し| MCPServer
     Ingest -->|ドキュメント登録| Neo4j
     MCPServer -->|検索クエリ実行| Neo4j
-    Ingest --> LLM
-    Ingest --> Ollama
-    MCPServer --> LLM
-    MCPServer --> Ollama
+    Ingest ---> LLM
+    Ingest ---> Ollama
+    MCPServer ---> LLM
+    MCPServer ---> Ollama
 ```
 
-
 ## Getting Started
-
 ### 1. 前提
 
 - OpenAPI互換のLLM APIが利用できる
   - ベクトル検索に利用するEmbeddingモデル
   - グラフ検索に利用するLLMモデル
-  - リランキングに利用する形容なLLMモデル
+  - リランキングに利用する軽量なLLMモデル
 - EmbeddingモデルとLLMモデルは、別のURLを指定できます
-  - 例: 
+  - 例:
     - Embeddingモデル: `ローカルのOllama`
-    - LLMモデル: `OpenAI`
+    - LMモデル: `OpenAI`
       - グラフ検索: o4-mini
       - リランキング: gpt-4.1-nano
   - 注意:
-    - OpenRouterの場合、rate limitでエラーになることが多いです
+    - OpenRouterの場合、rate limitでエラーになることが多いです。
     - LLMモデルをローカルのOllamaで利用する場合、フォーマット指定のレスポインスを、数秒で返すパフォーマンスが必要です。
 
 ### 2. インストール
@@ -84,50 +81,65 @@ docker compose run --rm ingest
 tail ./data/logs/ingest-*.log
 ```
 
+#### サポートファイル形式
+
+| カテゴリ             | 対応形式                             |
+| -------------------- | ------------------------------------ |
+| **テキスト**         | txt, md, rst, org                    |
+| **Web**              | html, xml                            |
+| **PDF**              | pdf                                  |
+| **Microsoft Office** | doc, docx, ppt, pptx, xls, xlsx      |
+| **OpenDocument**     | odt                                  |
+| **リッチテキスト**   | rtf                                  |
+| **eBook**            | epub                                 |
+| **データ**           | csv, tsv                             |
+| **メール**           | eml, msg, p7s                        |
+| **画像**             | bmp, heic, jpeg, jpg, png, tiff, tif |
+
 ### 4. ナレッジ検索
 
 - n8n / AI Agent node や Claude DeskctopなどのMCP Clientから接続
 
-    ```json
-    {
-        "mcpServers": {
-            "graphiti-memory": {
-                "transport": "sse",
-                "url": "http://localhost:8000/sse"
-            }
-        }
+  ```json
+  {
+    "mcpServers": {
+      "graphiti-memory": {
+        "transport": "sse",
+        "url": "http://localhost:8000/sse"
+      }
     }
-    ```
+  }
+  ```
 
-**利用可能なMCP Tools**:
+#### 利用可能なMCP Tools
 
 ```javascript
 // 事実検索（メイン機能）
 const result = await mcp.call_tool("search_memory_facts", {
-    query: "RAGシステムについて",
-    group_ids: ["default"],
-    max_facts: 10
+  query: "RAGシステムについて",
+  group_ids: ["default"],
+  max_facts: 10,
 });
 
-// ノード検索  
+// ノード検索
 const nodes = await mcp.call_tool("search_memory_nodes", {
-    query: "システム",
-    group_ids: ["default"],
-    max_nodes: 5
+  query: "システム",
+  group_ids: ["default"],
+  max_nodes: 5,
 });
 
 // エピソード取得
 const episodes = await mcp.call_tool("get_episodes", {
-    group_id: "default",
-    last_n: 10
+  group_id: "default",
+  last_n: 10,
 });
 
 // エピソード追加
 const addResult = await mcp.call_tool("add_memory", {
-    name: "新しい情報",
-    episode_body: "ここに内容を記述",
-    group_id: "default",
-    source: "text"
+  name: "新しい情報",
+  episode_body: "ここに内容を記述",
+  group_id: "default",
+  source: "text",
 });
 ```
 
@@ -163,23 +175,9 @@ CHUNK_SIZE_MIN=200
 CHUNK_OVERLAP=0
 ```
 
-### サポートファイル形式
-
-| カテゴリ             | 対応形式                             |
-| -------------------- | ------------------------------------ |
-| **テキスト**         | txt, md, rst, org                    |
-| **Web**              | html, xml                            |
-| **PDF**              | pdf                                  |
-| **Microsoft Office** | doc, docx, ppt, pptx, xls, xlsx      |
-| **OpenDocument**     | odt                                  |
-| **リッチテキスト**   | rtf                                  |
-| **eBook**            | epub                                 |
-| **データ**           | csv, tsv                             |
-| **メール**           | eml, msg, p7s                        |
-| **画像**             | bmp, heic, jpeg, jpg, png, tiff, tif |
-
-
 ## 既知の課題
 
-- モニタリングの仕組みが考慮されていない
-  - 検索の内部でなにが起きているかを可視化する仕組みが必要
+- ドキュメント登録
+  - LLMモデルのrate limitでエラーになる
+- ナレッジ検索
+  - 検索の内部でなにが起きているかがわかりにくい
