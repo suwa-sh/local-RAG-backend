@@ -14,7 +14,7 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group", "/docs/test"]
+        test_args = ["ingest.py", "/docs/test"]
 
         # ------------------------------
         # 実行 (Act)
@@ -25,7 +25,6 @@ class TestIngest:
         # ------------------------------
         # 検証 (Assert)
         # ------------------------------
-        assert args.group_id == "test-group"
         assert args.directory == "/docs/test"
 
     def test_parse_arguments_引数が不足している場合_適切なエラーメッセージが表示されること(
@@ -34,7 +33,7 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group"]  # directoryが不足
+        test_args = ["ingest.py"]  # directoryが不足
 
         # ------------------------------
         # 実行 (Act) & 検証 (Assert)
@@ -58,6 +57,7 @@ class TestIngest:
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
             "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
         }
 
         # ------------------------------
@@ -82,7 +82,20 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group", "/docs/test"]
+        test_args = ["ingest.py", "/docs/test"]
+
+        env_vars = {
+            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_USER": "neo4j",
+            "NEO4J_PASSWORD": "password",
+            "LLM_MODEL_URL": "http://localhost:4000/v1",
+            "LLM_MODEL_NAME": "claude-sonnet-4",
+            "LLM_MODEL_KEY": "sk-1234",
+            "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
+            "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
+            "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
+        }
 
         # ユースケースのモック
         mock_usecase = AsyncMock()
@@ -97,10 +110,11 @@ class TestIngest:
         # 実行 (Act)
         # ------------------------------
         with patch.object(sys, "argv", test_args):
-            with patch("src.main.ingest.create_usecase") as mock_create:
-                mock_create.return_value = mock_usecase
-                with patch("builtins.print") as mock_print:
-                    await main()
+            with patch.dict("os.environ", env_vars, clear=True):
+                with patch("src.main.ingest.create_usecase") as mock_create:
+                    mock_create.return_value = mock_usecase
+                    with patch("builtins.print") as mock_print:
+                        await main()
 
         # ------------------------------
         # 検証 (Assert)
@@ -130,7 +144,7 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group", "/nonexistent"]
+        test_args = ["ingest.py", "/nonexistent"]
 
         mock_usecase = AsyncMock()
         mock_usecase.execute_parallel.side_effect = FileNotFoundError(
@@ -165,7 +179,20 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group", "/docs/test"]
+        test_args = ["ingest.py", "/docs/test"]
+
+        env_vars = {
+            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_USER": "neo4j",
+            "NEO4J_PASSWORD": "password",
+            "LLM_MODEL_URL": "http://localhost:4000/v1",
+            "LLM_MODEL_NAME": "claude-sonnet-4",
+            "LLM_MODEL_KEY": "sk-1234",
+            "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
+            "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
+            "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
+        }
 
         mock_usecase = AsyncMock()
         mock_usecase.execute_parallel.side_effect = Exception(
@@ -176,10 +203,11 @@ class TestIngest:
         # 実行 (Act)
         # ------------------------------
         with patch.object(sys, "argv", test_args):
-            with patch("src.main.ingest.create_usecase") as mock_create:
-                mock_create.return_value = mock_usecase
-                with patch("builtins.print") as mock_print:
-                    exit_code = await main()
+            with patch.dict("os.environ", env_vars, clear=True):
+                with patch("src.main.ingest.create_usecase") as mock_create:
+                    mock_create.return_value = mock_usecase
+                    with patch("builtins.print") as mock_print:
+                        exit_code = await main()
 
         # ------------------------------
         # 検証 (Assert)
@@ -198,7 +226,20 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group", "/empty"]
+        test_args = ["ingest.py", "/empty"]
+
+        env_vars = {
+            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_USER": "neo4j",
+            "NEO4J_PASSWORD": "password",
+            "LLM_MODEL_URL": "http://localhost:4000/v1",
+            "LLM_MODEL_NAME": "claude-sonnet-4",
+            "LLM_MODEL_KEY": "sk-1234",
+            "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
+            "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
+            "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
+        }
 
         mock_usecase = AsyncMock()
         mock_result = Mock()
@@ -212,10 +253,11 @@ class TestIngest:
         # 実行 (Act)
         # ------------------------------
         with patch.object(sys, "argv", test_args):
-            with patch("src.main.ingest.create_usecase") as mock_create:
-                mock_create.return_value = mock_usecase
-                with patch("builtins.print") as mock_print:
-                    await main()
+            with patch.dict("os.environ", env_vars, clear=True):
+                with patch("src.main.ingest.create_usecase") as mock_create:
+                    mock_create.return_value = mock_usecase
+                    with patch("builtins.print") as mock_print:
+                        await main()
 
         # ------------------------------
         # 検証 (Assert)
@@ -235,7 +277,7 @@ class TestIngest:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        test_args = ["ingest.py", "test-group", "/docs/test"]
+        test_args = ["ingest.py", "/docs/test"]
 
         # 環境変数を空にする
         env_vars = {}

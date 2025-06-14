@@ -23,7 +23,6 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="指定ディレクトリ配下のファイル群をナレッジ登録する"
     )
-    parser.add_argument("group_id", help="グループID")
     parser.add_argument("directory", help="対象ディレクトリパス")
     parser.add_argument(
         "--workers", type=int, default=3, help="並列処理のワーカー数（デフォルト: 3）"
@@ -116,8 +115,9 @@ async def main() -> int:
         # ログ設定の初期化
         setup_logging()
 
-        # GroupIdオブジェクトの作成
-        group_id = GroupId(args.group_id)
+        # 設定読み込み（GROUP_ID環境変数から取得）
+        config = load_config()
+        group_id = GroupId(config.group_id)
 
         # ユースケースの実行（並列処理）
         usecase = create_usecase()

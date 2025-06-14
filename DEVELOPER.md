@@ -1,56 +1,85 @@
 # DEVELOPER.md
 
-- v0.1.0 登録機能の設計時点
+開発者向け詳細ドキュメント - local-RAG-backendシステムの設計・実装・運用に関する包括的な情報
 
-## C4モデル
+## システムアーキテクチャ
 
-### Level 1: System Context
+### システムコンテキスト図
 
 ```mermaid
 graph TB
-    User[ユーザー]
-    System[local-RAG-backend]
-    Neo4j[Neo4j Database]
+    User[ユーザー<br/>ドキュメント管理者]
+    AIAgent[MCP Client<br/>n8n.AI Agent など]
 
-    User -->|CLIコマンド実行| System
-    System -->|データ登録| Neo4j
+    subgraph "local-RAG-backend"
+        Ingest[ingest.py<br/>ドキュメント登録]
+        MCPServer[MCP Server<br/>ナレッジ検索]
+    end
+
+    Neo4j[Neo4j Database<br/>グラフDB + Vector DB]
+    LLM[OpenAI API互換<br/>LLMサービス]
+    Ollama[OpenAI API互換<br/>Embeddingモデル]
+
+    User -->|CLIコマンド実行| Ingest
+    AIAgent -->|MCP Tools呼び出し| MCPServer
+    Ingest -->|ドキュメント登録| Neo4j
+    MCPServer -->|検索クエリ実行| Neo4j
+    Ingest --> LLM
+    Ingest --> Ollama
+    MCPServer --> LLM
+    MCPServer --> Ollama
 ```
 
-| 要素名            | 説明                                              |
-| ----------------- | ------------------------------------------------- |
-| ユーザー          | CLIコマンドを実行してドキュメントを登録する利用者 |
-| local-RAG-backend | ローカルRAGシステムのバックエンド                 |
-| Neo4j Database    | グラフデータベース（ベクトルDB）                  |
+| 要素名                         | 責務                 | 通信方式               | 機能                       |
+| ------------------------------ | -------------------- | ---------------------- | -------------------------- |
+| ユーザー                       | ドキュメント管理者   | コマンドライン         | CLIでドキュメント登録      |
+| MCP Client                     | 検索クライアント     | MCP Protocol           | MCP Toolsでナレッジ検索    |
+| ingest.py                      | 登録処理システム     | 直接ライブラリ呼び出し | 文書解析・チャンク化・登録 |
+| MCP Server                     | 検索インターフェース | MCP Tools              | 8つのツールで検索・管理    |
+| Neo4j Database                 | データ永続化         | Bolt Protocol          | グラフDB・ベクトルDB       |
+| OpenAI API互換 LLMサービス     | LLM処理              | HTTPS                  | 構造化・リランク           |
+| OpenAI API互換 Embeddingモデル | Embedding生成        | HTTP                   | Embedding                  |
 
-### Level 2: Container
+### コンテナ図
 
 ```mermaid
 graph TB
-    CLI[CLI Application]
-    DPL[Document Processing Library]
-    GC[Graphiti Core]
-    UN[Unstructured.io]
-    Neo4j[Neo4j Database]
+    subgraph "ドキュメント登録"
+        CLI[CLI Application<br/>ingest.py]
+        DPL[Document Processing<br/>Library]
+    end
 
-    CLI -->|依存| DPL
-    DPL -->|使用| GC
-    DPL -->|使用| UN
-    GC -->|データ登録| Neo4j
+    subgraph "ナレッジ検索"
+        MCPTools[MCP Tools<br/>検索・管理機能]
+        GraphitiCore[Graphiti Core<br/>Library]
+        MCPConfig[MCP Config<br/>LLM/Embedder分離設定]
+    end
+
+    subgraph "Data Layer"
+        Neo4j[Neo4j Database<br/>グラフ + ベクトル]
+    end
+
+    subgraph "External Services"
+        OpenAI[OpenAI API<br/>gpt-4o-mini]
+        Ollama[Ollama Server<br/>cl-nagoya-ruri-large]
+    end
+
+    CLI --> DPL
+    DPL --> GraphitiCore
+    MCPTools --> GraphitiCore
+    MCPConfig --> GraphitiCore
+    GraphitiCore --> Neo4j
+    DPL --> OpenAI
+    DPL --> Ollama
+    MCPConfig --> OpenAI
+    MCPConfig --> Ollama
 ```
 
-| 要素名                      | 説明                                    |
-| --------------------------- | --------------------------------------- |
-| CLI Application             | ingest.pyコマンドラインインターフェース |
-| Document Processing Library | ドキュメント処理のコアライブラリ        |
-| Graphiti Core               | グラフDBとの連携ライブラリ              |
-| Unstructured.io             | ドキュメント解析ライブラリ              |
-| Neo4j Database              | グラフデータベース                      |
-
-### Level 3: Component
+### コンポーネント図 / ドキュメント登録
 
 ```mermaid
 graph TB
-    subgraph "CLI Application"
+    subgraph "ドキュメント登録"
         subgraph "Presentation Layer"
             ingest[ingest.py]
         end
@@ -66,10 +95,6 @@ graph TB
             GroupId[GroupId]
         end
 
-        subgraph "Repository Layer"
-            ER[EpisodeRepository]
-        end
-
         subgraph "Adapter Layer"
             GER[GraphitiEpisodeRepository]
             UDP[UnstructuredDocumentParser]
@@ -82,78 +107,64 @@ graph TB
     UC --> Chunk
     UC --> Episode
     UC --> GroupId
-    UC --> ER
-    ER -.->|実装| GER
+    UC --> GER
     UC --> UDP
     UC --> FDR
 ```
 
-| 要素名                     | 説明                               |
-| -------------------------- | ---------------------------------- |
-| ingest.py                  | CLIエントリーポイント              |
-| RegisterDocumentUseCase    | ドキュメント登録のユースケース     |
-| Document                   | 文書エンティティ                   |
-| Chunk                      | チャンクエンティティ               |
-| Episode                    | エピソード値オブジェクト           |
-| GroupId                    | グループID値オブジェクト           |
-| EpisodeRepository          | エピソード保存のインターフェース   |
-| GraphitiEpisodeRepository  | Graphitiを使用したリポジトリ実装   |
-| UnstructuredDocumentParser | Unstructuredを使用した文書解析     |
-| FileSystemDocumentReader   | ファイルシステムからの文書読み込み |
-
 ## ユーザーストーリーマッピング (USM)
-
-### エピック: ドキュメント登録
 
 ```mermaid
 graph TD
-    A[ドキュメントを登録する]
+    A[ナレッジ管理システム]
 
-    B1[CLIコマンドを実行する]
+    B1[ドキュメントを登録する]
+    B2[ナレッジを検索する]
+
     B1_1[ファイルを収集する]
     B1_2[ドキュメントを解析する]
     B1_3[チャンクに分割する]
     B1_4[グラフDBに登録する]
 
-    C2[指定ディレクトリ内のファイルを再帰的に探索する]
-    C3[サポート対象のファイル形式をフィルタリングする]
-    C4[ファイルタイプを自動検出する]
-    C5[ファイル内容を構造化された要素に変換する]
-    C6[最大文字数制限に基づいて分割する]
-    C7[短い要素は結合して適切なサイズにする]
-    C8[エピソードとして登録する]
-    C9[登録結果を表示する]
+    B2_1[検索クエリを実行する]
+    B2_2[結果をフィルタリングする]
+    B2_3[関連情報を取得する]
 
-    A -- グループIDとディレクトリを指定 --> B1
+    A -- CLI経由 --> B1
+    A -- MCP Tools経由 --> B2
+
     B1 --> B1_1
     B1 --> B1_2
     B1 --> B1_3
     B1 --> B1_4
 
-    B1_1 --> C2
-    B1_1 --> C3
-    B1_2 --> C4
-    B1_2 --> C5
-    B1_3 --> C6
-    B1_3 --> C7
-    B1_4 --> C8
-    B1_4 --> C9
+    B2 --> B2_1
+    B2 --> B2_2
+    B2 --> B2_3
 ```
 
-| レベル | 要素                   | 説明                     |
-| ------ | ---------------------- | ------------------------ |
-| 活動   | ドキュメントを登録する | ユーザーの最終目的       |
-| タスク | CLIコマンドを実行する  | コマンドラインからの実行 |
-| 処理   | ファイルを収集する     | 対象ファイルの探索と選別 |
-| 処理   | ドキュメントを解析する | ファイル内容の構造化     |
-| 処理   | チャンクに分割する     | 適切なサイズへの分割     |
-| 処理   | グラフDBに登録する     | Neo4jへのデータ保存      |
+| レベル       | 要素                     | 説明                         | 実装                       |
+| ------------ | ------------------------ | ---------------------------- | -------------------------- |
+| **システム** | ナレッジ管理システム     | 文書登録と検索の統合システム | local-RAG-backend          |
+| **エピック** | ドキュメントを登録する   | CLIによるドキュメント登録    | ingest.py                  |
+|              | ファイルを収集する       | 対象ファイルの探索と選別     | FileSystemDocumentReader   |
+|              | ドキュメントを解析する   | ファイル内容の構造化         | UnstructuredDocumentParser |
+|              | チャンクに分割する       | 適切なサイズへの分割         | ChunkSplitter              |
+|              | グラフDBに登録する       | Neo4jへのデータ保存          | GraphitiEpisodeRepository  |
+| **エピック** | ナレッジを検索する       | MCP Toolsによる検索          | MCP Server                 |
+|              | 検索クエリを実行する     | 自然言語での検索             | search_memory_facts        |
+|              | 結果をフィルタリングする | 権限・件数での絞り込み       | group_ids, max_facts       |
+|              | 関連情報を取得する       | 詳細・関連情報の取得         | get_entity_edge            |
 
 ## アプリケーションアーキテクチャ
 
-本プロジェクトはDDD（ドメイン駆動設計）に基づいた層構造を採用しています。
+登録機能はDDD、検索機能は公式MCP Server実装を流用した2つのアーキテクチャを組み合わせています。
 
-### レイヤー構造
+### ドキュメント登録
+
+ドキュメント登録はDDD（ドメイン駆動設計）に基づいた層構造を採用しています。
+
+**レイヤー構造:**
 
 1. **プレゼンテーション層** (`src/main/`)
 
@@ -178,7 +189,36 @@ graph TD
    - 外部サービスとの連携実装
    - リポジトリの具体的実装
 
-## ドメインモデル
+### ナレッジ検索
+
+ナレッジ検索は、公式のMCP（Model Context Protocol）Serverから、LLM modelとEmbedding modelの設定を分離できるようにしています。
+
+## 設定
+
+### 環境変数
+
+```ini
+# LLM設定（ドキュメント登録・検索共通）
+LLM_MODEL_URL=https://api.openai.com/v1
+LLM_MODEL_KEY=sk-xxx
+LLM_MODEL_NAME=gpt-4o-mini
+RERANK_MODEL_NAME=gpt-4o-mini
+
+# Embedding設定（ドキュメント登録・検索共通）
+EMBEDDING_MODEL_URL=http://localhost:11434/v1
+EMBEDDING_MODEL_KEY=dummy
+EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
+
+# Neo4j設定（共通データベース）
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+
+# テナント設定
+GROUP_ID=default
+```
+
+## 仕様 / ドキュメント登録
 
 ### サポートファイルタイプ
 
@@ -295,7 +335,7 @@ classDiagram
     EpisodeRepository ..> Episode : persists
 ```
 
-## シーケンス図
+### シーケンス図
 
 ```mermaid
 sequenceDiagram
@@ -334,32 +374,32 @@ sequenceDiagram
     CLI-->>User: 登録完了メッセージ
 ```
 
-## 設計上の考慮事項
+### 設計上の考慮事項
 
-### ファイルタイプサポート設計
+#### ファイルタイプサポート設計
 
-#### 設計方針
+**設計方針**
 
 1. **外部ライブラリ準拠**: Unstructured.ioの公式サポートに基づく
 2. **一元管理**: `Document.SUPPORTED_FILE_TYPES`で集中管理
 3. **拡張性**: セット型で新しいファイルタイプの追加が容易
 4. **バリデーション**: 初期化時にサポート外ファイルタイプを検証
 
-#### 技術的根拠
+**技術的根拠**
 
 - **参考資料**: [Unstructured.io - Supported File Types](https://docs.unstructured.io/open-source/introduction/supported-file-types)
 - **実装場所**: `src/domain/document.py:SUPPORTED_FILE_TYPES`
 - **テスト保証**: 代表的なファイルタイプの動作確認済み
 - **総サポート数**: 28種類のファイルタイプ
 
-#### 将来的な拡張
+**将来的な拡張**
 
 ```python
 # 新しいファイルタイプの追加例
 SUPPORTED_FILE_TYPES.add("new_format")
 ```
 
-### エラーハンドリング
+#### エラーハンドリング
 
 ```mermaid
 graph TD
@@ -385,7 +425,7 @@ graph TD
     B4 --> C4
 ```
 
-### パフォーマンス考慮事項
+#### パフォーマンス考慮事項
 
 | 項目                   | 対策                       | 説明                           |
 | ---------------------- | -------------------------- | ------------------------------ |
@@ -393,7 +433,7 @@ graph TD
 | バッチ登録による効率化 | save_batch メソッド        | 複数エピソードを一括登録       |
 | メモリ使用量の最適化   | ストリーミング処理         | 大きなファイルも段階的に処理   |
 
-### 拡張性の設計
+#### 拡張性の設計
 
 ```mermaid
 graph LR
@@ -414,9 +454,79 @@ graph LR
     A3 -.->|戦略パターン| B3
 ```
 
-## ディレクトリ構成
+### パフォーマンス最適化の知見
 
-### プロジェクト全体構成
+#### LLM API選択指針
+
+以下は実際の性能測定に基づく知見です。新しいLLMサービスを検討する際の参考にしてください。
+
+**実証済み最適解**
+
+```ini
+# 最高性能・最安定の構成（実測）
+LLM_MODEL_URL=https://api.openai.com/v1    # 直接接続
+LLM_MODEL_NAME=gpt-4o-mini                # 1.24秒/回、高精度
+```
+
+**避けるべき構成（実測済み問題）**
+
+```ini
+# 問題のある構成例
+LLM_MODEL_URL=http://localhost:4000/v1     # claude-code-server（極度の遅延）
+LLM_MODEL_URL=http://localhost:11434/v1    # ollama gemma2/4b（遅延・エラー頻発）
+LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit・フォーマットエラー
+```
+
+#### フォーマットエラーの原因と対策
+
+**主要な原因**
+
+1. **Rate Limit**: OpenRouterで高負荷時にフォーマットエラー頻発
+2. **モデル品質**: ローカルLLM（ollama gemma2/4b）で不定期エラー
+3. **接続不安定**: ネットワーク経由のAPIゲートウェイ
+
+**対策**
+
+- **直接API接続**: 中間層を避けて安定性確保
+- **高品質モデル**: structured outputに対応した実績あるモデル選択
+- **エラーハンドリング**: 一部失敗でも処理継続する設計
+
+#### 並列処理の最適化
+
+**ワーカー数の指針**
+
+- **3ワーカー**: 標準構成（実測50秒）
+- **5ワーカー**: 微改善のみ（実測49秒、1秒短縮）
+- **最適値**: ワーカー数 ≤ ファイル数
+
+**実測値（3ファイル処理）**
+
+- **総実行時間**: 49-50秒
+- **LLM処理**: 30.9%（21秒）
+- **Embedding処理**: 69.1%（47秒）- 現在のボトルネック
+
+## 仕様 / ナレッジ検索
+
+### 主要検索Tools
+
+| Tool                  | 機能           | 用途                 | n8n.AI Agent使用例 |
+| --------------------- | -------------- | -------------------- | ------------------ |
+| `search_memory_facts` | 事実検索       | メイン検索機能       | 質問回答の情報取得 |
+| `search_memory_nodes` | ノード検索     | 関連エンティティ検索 | 詳細情報の関連取得 |
+| `get_entity_edge`     | 個別事実取得   | 特定情報の詳細確認   | ファクトの詳細表示 |
+| `get_episodes`        | エピソード一覧 | 最新情報確認         | 時系列情報の取得   |
+
+### 管理・運用Tools
+
+| Tool                 | 機能           | 用途           |
+| -------------------- | -------------- | -------------- |
+| `add_memory`         | エピソード追加 | 動的情報追加   |
+| `delete_entity_edge` | 事実削除       | 情報削除       |
+| `clear_graph`        | グラフクリア   | データリセット |
+
+## 開発・運用
+
+### ディレクトリ構成
 
 ```
 local-RAG-backend/
@@ -437,6 +547,10 @@ local-RAG-backend/
 │       ├── filesystem_document_reader.py
 │       ├── entity_cache.py
 │       └── logging_utils.py
+├── mcp_server/            # MCP Server（検索機能）
+│   ├── graphiti_mcp_server.py  # MCPサーバー実装
+│   ├── .env.example           # 設定例
+│   └── docker-compose.yml     # Docker構成
 ├── tests/                 # テストコード
 │   ├── domain/           # ドメイン層テスト
 │   ├── usecase/          # ユースケース層テスト
@@ -448,59 +562,50 @@ local-RAG-backend/
 │       ├── test_simple/  # シンプルテスト用
 │       └── test_documents/ # サンプルファイル
 ├── scripts/              # 開発・運用支援スクリプト
-│   ├── neo4j*            # neo4j関連
-│   └── analyze*          # パフォーマンス分析関連
 ├── .env                  # 環境変数
-├── .env.example          # 環境変数テンプレート
 ├── CLAUDE.md            # Claude Code用ガイダンス
 ├── DEVELOPER.md         # 開発者向け詳細ドキュメント
 ├── README.md            # ユーザー向けドキュメント
 ├── Makefile             # 開発・運用コマンド
-├── docker-compose.yml   # Neo4j環境設定
 ├── pyproject.toml       # Python設定（rye管理）
-├── pytest.ini           # テスト設定
-├── tmp/                  # 一時ファイル
-├── logs/                 # 各種ログ
-├── data/                 # dockercomposeのボリュームマウント
-├── .claude/              # claude code設定
-└── .qlty/                # qlty 設定
+└── tmp/                 # 一時ファイル・作業用
 ```
 
-## 開発規約
+### 開発規約
 
-### テスト駆動開発（TDD）
+#### テスト駆動開発（TDD）
 
 1. テストファーストで実装
 2. レッドフェーズ → グリーンフェーズ → リファクタリング
 3. カバレッジ目標: 80%以上
 
-### コード品質
+#### コード品質
 
 - qltyによる自動チェックを通過すること
 - 型ヒントを必ず使用
 - docstringでクラス・メソッドを文書化
 
-#### 品質チェック除外事項
+**品質チェック除外事項**
 
 以下の警告は開発方針として許容する：
 
 - `bandit:B101` - pytestでのassert使用（テストフレームワークの標準的な使用方法）
 - `radarlint-python:python:S100` - テストメソッドの日本語命名（BDD仕様に従った命名）
 
-### Git運用
+#### Git運用
 
 - mainブランチへの直接プッシュは禁止
 - 機能ブランチで開発し、PRでマージ
 - コミットメッセージは日本語で簡潔に
 
-## 環境構築手順
+### 環境構築手順
 
 1. リポジトリのクローン
 2. `rye sync` で依存関係インストール
 3. `docker compose up -d` でNeo4j起動
 4. `.env` ファイルの作成（`.env.example`を参考）
 
-## よく使うコマンド
+### よく使うコマンド
 
 ```bash
 # フォーマット

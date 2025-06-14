@@ -44,6 +44,32 @@ services:
     command: ["/scripts/neo4j-init.sh"]
     restart: "no"
 
+
+  graphiti-mcp:
+    image: suwash/graphiti-mcp-server:latest
+    container_name: local-rag-graphiti-mcp
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      - PATH=/root/.local/bin:${PATH}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - LLM_MODEL_URL=${LLM_MODEL_URL}
+      - LLM_MODEL_KEY=${LLM_MODEL_KEY}
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME}
+      - RERANK_MODEL_NAME=${RERANK_MODEL_NAME}
+      - EMBEDDING_MODEL_URL=${EMBEDDING_MODEL_URL}
+      - EMBEDDING_MODEL_KEY=${EMBEDDING_MODEL_KEY}
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
+      - GROUP_ID=${GROUP_ID}
+    ports:
+      - "8000:8000" # Expose the MCP server via HTTP for SSE transport
+    command: ["uv", "run", "graphiti_mcp_server.py"]
+    networks:
+      - rag-network
+
 networks:
   rag-network:
     driver: bridge

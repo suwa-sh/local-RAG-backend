@@ -49,6 +49,7 @@ class AppConfig:
     llm: LLMConfig
     embedding: EmbeddingConfig
     chunk: ChunkConfig
+    group_id: str
 
 
 def load_config() -> AppConfig:
@@ -72,6 +73,7 @@ def load_config() -> AppConfig:
         "EMBEDDING_MODEL_URL",
         "EMBEDDING_MODEL_NAME",
         "EMBEDDING_MODEL_KEY",
+        "GROUP_ID",
     ]
 
     missing_vars = []
@@ -123,4 +125,5 @@ def load_config() -> AppConfig:
         llm=llm_config,
         embedding=embedding_config,
         chunk=chunk_config,
+        group_id=os.getenv("GROUP_ID", ""),
     )

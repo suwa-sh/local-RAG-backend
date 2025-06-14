@@ -1,13 +1,15 @@
 # local-RAG-backend
 
-**v0.1.0** - 高性能なローカルRAGドキュメント登録システム
+**v0.2.0** - 高性能なローカルRAGシステム（登録・検索対応）
 
-ローカル環境で完結するRAGシステムのバックエンドです。28種類のファイル形式をサポートし、並列処理により高速な文書登録を実現します。
+ローカル環境で完結するRAGシステムのバックエンドです。28種類のファイル形式をサポートし、並列処理による高速な文書登録と、MCP Server経由での検索機能を提供します。
 
 ## ✨ 特徴
 
 - **高速並列処理**: 3-5ワーカーで並列実行（約50秒で3ファイル処理）
 - **28種類ファイル対応**: PDF、Office、テキスト、画像など幅広いファイル形式
+- **MCP検索機能**: Model Context Protocol対応の8つの検索・管理ツール
+- **統合設定管理**: 単一の.envファイルで登録・検索の両機能を管理
 - **本格運用対応**: 設定管理、エラーハンドリング、テストカバレッジ完備
 - **DDD設計**: ドメイン駆動設計による保守性の高いアーキテクチャ
 
@@ -22,11 +24,22 @@ CLI → ユースケース層 → アダプター層 → 外部ライブラリ
                     └── Neo4j (データ保存)
 ```
 
-### 検索処理（v0.2.0予定）
+### 検索処理（v0.2.0実装済み）
 
 ```
-n8n.AI Agent → Graphiti Server → Neo4j + Ollama
+MCP Client → MCP Server (SSE) → Graphiti Core → Neo4j + LLM/Embedding
+   ↓              ↓                   ↓
+n8n.AI Agent   8つのTools         日本語検索対応
 ```
+
+#### MCP Tools（8つ）
+1. `search_memory_facts` - 事実検索（メイン機能）
+2. `search_memory_nodes` - ノード検索
+3. `get_entity_edge` - 個別事実取得
+4. `get_episodes` - エピソード一覧
+5. `add_memory` - エピソード追加
+6. `delete_entity_edge` - 事実削除
+7. `clear_graph` - グラフクリア
 
 ## 🚀 クイックスタート
 
@@ -50,6 +63,9 @@ make docker-up
 # テスト実行
 make test
 
+# 登録・検索統合テスト（推奨）
+make test-mcp
+
 # 実際のファイルで動作確認
 make ingest-simple
 ```
@@ -60,18 +76,21 @@ make ingest-simple
 
 ```bash
 # 標準実行（3ワーカー並列処理）
-PYTHONPATH=. rye run python -m src.main.ingest <group_id> <directory>
+rye run python -m src.main.ingest <directory>
 
 # ワーカー数指定
-PYTHONPATH=. rye run python -m src.main.ingest <group_id> <directory> --workers 5
+rye run python -m src.main.ingest <directory> --workers 5
+
+# 環境変数でグループID指定
+GROUP_ID=my-group rye run python -m src.main.ingest <directory>
 ```
 
 ### Makefileでの実行
 
 ```bash
 # 基本的な実行
-make run GROUP=my-group DIR=/path/to/documents
-make run GROUP=my-group DIR=/path/to/documents WORKERS=5  # ワーカー数指定
+make run DIR=/path/to/documents
+make run DIR=/path/to/documents GROUP_ID=my-group WORKERS=5  # グループID・ワーカー数指定
 
 # テスト・サンプル実行
 make ingest-simple               # シンプルテスト
@@ -93,17 +112,66 @@ make analyze-performance
 | 3（推奨）  | 標準利用   | 約50秒                |
 | 5          | 高速化重視 | 約49秒                |
 
-## 🔍 検索機能（v0.2.0予定）
+## 🔍 検索機能（v0.2.0実装済み）
+
+### MCP Server起動・管理
 
 ```bash
-# 検索API（未実装）
-curl -X POST http://localhost:8000/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "検索したい内容",
-    "group_ids": ["default"],
-    "max_facts": 10
-  }'
+# MCP Server起動（バックグラウンド）
+make mcp-server-start
+
+# 動作状況確認
+make mcp-server-status
+
+# ログ確認
+make mcp-server-logs
+
+# 停止
+make mcp-server-stop
+```
+
+### 検索テスト
+
+```bash
+# 登録・検索統合テスト
+make test-mcp              # 標準テスト
+make test-mcp-quick        # 高速テスト
+make test-mcp-full         # 完全テスト
+
+# 個別検索テスト
+make test-search QUERY="RAGシステム"
+
+# 詳細検索テスト（スクリプト直接実行）
+python scripts/test_mcp_search.py "検索語"
+python scripts/test_mcp_search.py --all-tests "システム"
+python scripts/test_mcp_search.py --search-nodes "エンティティ"
+python scripts/test_mcp_search.py --episodes-only
+```
+
+### n8n.AI Agent連携例
+
+MCP Serverはポート8000（SSE transport）で起動し、n8n.AI AgentなどのMCP Clientから利用できます：
+
+```javascript
+// 事実検索
+const result = await mcp.call_tool("search_memory_facts", {
+    query: "RAGシステムについて",
+    group_ids: ["default"],
+    max_facts: 10
+});
+
+// ノード検索  
+const nodes = await mcp.call_tool("search_memory_nodes", {
+    query: "システム",
+    group_ids: ["default"],
+    max_nodes: 5
+});
+
+// エピソード取得
+const episodes = await mcp.call_tool("get_episodes", {
+    group_id: "default",
+    last_n: 10
+});
 ```
 
 ## ⚙️ 設定
@@ -123,6 +191,9 @@ LLM_MODEL_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
 LLM_MODEL_KEY=your_openai_api_key
 
+# Rerankモデル（小型モデル用、省略時はLLM_MODEL_NAMEと同じ）
+RERANK_MODEL_NAME=gpt-4.1-nano
+
 # Embeddingモデル（ローカル推論）
 EMBEDDING_MODEL_URL=http://localhost:11434/v1
 EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
@@ -132,6 +203,9 @@ EMBEDDING_MODEL_KEY=dummy
 CHUNK_SIZE_MAX=2000
 CHUNK_SIZE_MIN=200
 CHUNK_OVERLAP=0
+
+# テナント識別子設定（必須）
+GROUP_ID=default
 ```
 
 #### ⚠️ 避けるべき設定
@@ -162,11 +236,13 @@ LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit問題
 
 ### テスト種類
 
-| コマンド                | 対象                             | 実行時間 | 説明                    |
-| ----------------------- | -------------------------------- | -------- | ----------------------- |
-| `make test`             | ユニット・結合テスト（85テスト） | 約2秒    | 外部API不要の高速テスト |
-| `make test-integration` | Neo4j接続テスト                  | 約10秒   | インフラ接続確認        |
-| `make ingest-simple`    | E2Eテスト                        | 約30秒   | 実際のAPI使用           |
+| コマンド                | 対象                             | 実行時間 | 説明                          |
+| ----------------------- | -------------------------------- | -------- | ----------------------------- |
+| `make test`             | ユニット・結合テスト（85テスト） | 約2秒    | 外部API不要の高速テスト       |
+| `make test-integration` | Neo4j接続テスト                  | 約10秒   | インフラ接続確認              |
+| `make test-mcp`         | 登録・検索統合テスト             | 約60秒   | v0.2.0全機能の動作確認        |
+| `make test-mcp-quick`   | 登録・検索高速テスト             | 約40秒   | 基本機能のみの動作確認        |
+| `make ingest-simple`    | 登録E2Eテスト                    | 約30秒   | 実際のAPI使用（登録のみ）     |
 
 ### 品質チェック
 
@@ -189,10 +265,14 @@ make test
 # 2. インフラ接続確認
 make test-integration
 
-# 3. 実機能確認
-make ingest-example
+# 3. v0.2.0 統合機能確認（推奨）
+make test-mcp
 
-# 4. パフォーマンス分析
+# 4. 個別機能確認
+make ingest-example      # 登録機能のみ
+make test-search QUERY="テスト"  # 検索機能のみ
+
+# 5. パフォーマンス分析
 make ingest-benchmark
 make analyze-performance
 ```
@@ -255,9 +335,12 @@ make analyze-performance
 - ✅ 高速並列処理（91%性能改善）
 - ✅ 本格運用対応（設定管理・エラーハンドリング・テスト）
 
-### v0.2.0（予定）
+### v0.2.0（実装完了）
 
-- 🔄 検索API機能（Graphiti Server経由）
+- ✅ MCP Server検索機能（8つのMCP Tools）
+- ✅ LLM/Embedding分離設定対応
+- ✅ 統合テスト基盤（登録・検索）
+- ✅ n8n.AI Agent連携対応
 
 ### v1.0.0（将来）
 

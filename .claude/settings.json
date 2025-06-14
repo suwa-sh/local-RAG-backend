@@ -12,6 +12,7 @@
       "Bash(rg:*)",
       "Bash(grep:*)",
       "Bash(diff:*)",
+      "Bash(cat:*)",
       "Bash(mkdir:*)",
       "Bash(timeout:*)",
       "Bash(git git restore:*)",

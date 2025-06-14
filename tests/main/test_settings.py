@@ -26,6 +26,7 @@ class TestSettings:
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
             "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
             "CHUNK_SIZE_MAX": "1500",
             "CHUNK_SIZE_MIN": "150",
             "CHUNK_OVERLAP": "50",
@@ -64,6 +65,9 @@ class TestSettings:
         assert config.chunk.min_size == 150
         assert config.chunk.overlap == 50
 
+        # グループID設定
+        assert config.group_id == "test-group"
+
         # OPENAI_API_KEYが自動設定されること
         assert openai_api_key == "sk-1234"
 
@@ -83,6 +87,7 @@ class TestSettings:
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
             "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
             # チャンク設定を省略
         }
 
@@ -100,6 +105,9 @@ class TestSettings:
         assert config.chunk.min_size == 100
         assert config.chunk.overlap == 0
 
+        # グループID設定
+        assert config.group_id == "test-group"
+
     def test_load_config_必須環境変数が不足している場合_例外が発生すること(self):
         # ------------------------------
         # 準備 (Arrange)
@@ -114,6 +122,7 @@ class TestSettings:
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
             "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
         }
 
         # ------------------------------
@@ -134,6 +143,7 @@ class TestSettings:
             "NEO4J_USER": "neo4j",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
+            "GROUP_ID": "test-group",
             # NEO4J_URL, NEO4J_PASSWORD, LLM_MODEL_NAME, LLM_MODEL_KEY,
             # EMBEDDING_MODEL_NAME, EMBEDDING_MODEL_KEY を省略
         }
@@ -169,6 +179,7 @@ class TestSettings:
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
             "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
             # OPENAI_API_KEY は設定しない
         }
 
@@ -202,6 +213,7 @@ class TestSettings:
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "EMBEDDING_MODEL_NAME": "kun432/cl-nagoya-ruri-large:latest",
             "EMBEDDING_MODEL_KEY": "dummy",
+            "GROUP_ID": "test-group",
             "OPENAI_API_KEY": "sk-existing-key",  # 既に設定されている
         }
 

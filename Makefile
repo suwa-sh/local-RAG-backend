@@ -8,7 +8,7 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-.PHONY: help setup test test-unit test-integration lint fmt check clean run ingest docker-up docker-down doctor
+.PHONY: help setup test test-unit test-integration lint fmt check clean run ingest docker-build docker-up docker-down doctor
 
 # デフォルトターゲット
 help: ## ヘルプメッセージを表示
@@ -82,6 +82,10 @@ check: fmt lint test ## リント + テストを実行
 # =============================================================================
 # Docker関連
 # =============================================================================
+docker-build: ## Dockerイメージをビルド
+	@echo "🐳 Dockerイメージビルド中..."
+	./scripts/build-mcp-server.sh
+	@echo "✅ Dockerイメージビルド完了"
 
 docker-up: ## Neo4jコンテナを起動（インデックス自動作成）
 	@echo "🐳 Neo4jコンテナ起動中..."
@@ -105,55 +109,48 @@ docker-clean: ## Neo4jデータを完全削除
 	sudo rm -rf data/neo4j/data/*
 	@echo "✅ Neo4jデータ削除完了"
 
-
 # =============================================================================
 # ドキュメント登録（ingest）
 # =============================================================================
 
 ## 基本的な使い方
-run: ## ドキュメント登録実行（例: make run GROUP=test DIR=path/to/docs）
-	@if [ -z "$(GROUP)" ] || [ -z "$(DIR)" ]; then \
-		echo "❌ GROUP と DIR を指定してください"; \
-		echo "例: make run GROUP=my-group DIR=/path/to/documents"; \
+run: ## ドキュメント登録実行（例: make run DIR=path/to/docs GROUP_ID=test）
+	@if [ -z "$(DIR)" ]; then \
+		echo "❌ DIR を指定してください"; \
+		echo "例: make run DIR=/path/to/documents GROUP_ID=my-group"; \
 		exit 1; \
 	fi
 	@echo "📄 ドキュメント登録実行中..."
-	@echo "  グループID: $(GROUP)"
+	@echo "  グループID: $${GROUP_ID:-環境変数から取得}"
 	@echo "  ディレクトリ: $(DIR)"
 	@echo "  ワーカー数: $${WORKERS:-3}（デフォルト）"
-	PYTHONPATH=. rye run python -m src.main.ingest $(GROUP) $(DIR) $${WORKERS:+--workers $$WORKERS}
+	@if [ -n "$$GROUP_ID" ]; then \
+		GROUP_ID=$$GROUP_ID rye run python -m src.main.ingest $(DIR) $${WORKERS:+--workers $$WORKERS}; \
+	else \
+		rye run python -m src.main.ingest $(DIR) $${WORKERS:+--workers $$WORKERS}; \
+	fi
 
 ## テスト・サンプル実行
 ingest-simple: ## シンプルテスト（fixtures/test_simple/test.txt）
 	@echo "📄 シンプルテスト実行中..."
 	@echo "✅ テストファイル: fixtures/ingest/test_simple/test.txt"
-	$(MAKE) run GROUP=simple-test DIR=fixtures/ingest/test_simple
+	$(MAKE) run DIR=fixtures/ingest/test_simple
 
 ingest-example: ## サンプル実行（fixtures/test_documents/）
 	@echo "🚀 サンプル実行中..."
 	@echo "✅ サンプルファイル: fixtures/ingest/test_documents/"
-	$(MAKE) run GROUP=example DIR=fixtures/ingest/test_documents
+	$(MAKE) run DIR=fixtures/ingest/test_documents
 
 ## パフォーマンス測定・分析
 ingest-benchmark: ## ベンチマーク実行（ログ記録・分析付き）
 	@mkdir -p logs
 	@echo "⚡ ベンチマーク実行中（3ワーカー）..."
 	@echo "開始時刻: $$(date)" | tee logs/benchmark.log
-	@PYTHONPATH=. rye run python -m src.main.ingest benchmark fixtures/ingest/test_documents 2>&1 | tee -a logs/benchmark.log
+	@rye run python -m src.main.ingest fixtures/ingest/test_documents 2>&1 | tee -a logs/benchmark.log
 	@echo "終了時刻: $$(date)" | tee -a logs/benchmark.log
 	@echo ""
 	@echo "📊 パフォーマンス分析実行中..."
 	@python scripts/analyze_api_calls.py logs/benchmark.log
-
-ingest-benchmark-fast: ## 高速ベンチマーク（5ワーカー）
-	@mkdir -p logs
-	@echo "🚀 高速ベンチマーク実行中（5ワーカー）..."
-	@echo "開始時刻: $$(date)" | tee logs/benchmark-fast.log
-	@PYTHONPATH=. rye run python -m src.main.ingest benchmark-fast fixtures/ingest/test_documents --workers 5 2>&1 | tee -a logs/benchmark-fast.log
-	@echo "終了時刻: $$(date)" | tee -a logs/benchmark-fast.log
-	@echo ""
-	@echo "📊 パフォーマンス分析実行中..."
-	@python scripts/analyze_api_calls.py logs/benchmark-fast.log
 
 analyze-performance: ## 最新のベンチマークログを分析
 	@if [ -f logs/benchmark-fast.log ]; then \
@@ -229,6 +226,7 @@ neo4j-browser: ## Neo4jブラウザURLを開く（macOS）
 
 show-env: ## 現在の環境変数設定を表示
 	@echo "🔧 環境変数設定:"
+	@echo "GROUP_ID=${GROUP_ID}"
 	@echo "NEO4J_URL=${NEO4J_URL}"
 	@echo "LLM_MODEL_URL=${LLM_MODEL_URL}"
 	@echo "EMBEDDING_MODEL_URL=${EMBEDDING_MODEL_URL}"
@@ -253,9 +251,3 @@ deps-update: ## 依存関係を更新
 build: ## パッケージをビルド
 	@echo "🏗️  パッケージビルド中..."
 	rye build
-
-version: ## バージョン情報を表示
-	@echo "📋 バージョン情報:"
-	@echo "local-RAG-backend: v0.1.0"
-	@rye --version
-	@python --version
