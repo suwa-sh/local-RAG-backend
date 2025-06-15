@@ -39,7 +39,7 @@ COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/
 COPY src/ /app/src/
 
 # Set environment variables
-ENV PYTHONPATH="/app:${PYTHONPATH}"
+ENV PYTHONPATH="/app"
 
 # Create data directories
 RUN mkdir -p /data/input /data/logs
