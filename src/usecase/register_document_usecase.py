@@ -44,87 +44,6 @@ class RegisterDocumentUseCase:
         self._episode_repository = episode_repository
         self._logger = logging.getLogger(__name__)
 
-    async def execute(self, group_id: GroupId, directory: str) -> RegisterResult:
-        """
-        指定ディレクトリのドキュメントを登録する
-
-        Args:
-            group_id: グループID
-            directory: 対象ディレクトリパス
-
-        Returns:
-            RegisterResult: 登録結果
-
-        Raises:
-            FileNotFoundError: ディレクトリが存在しない場合
-            Exception: 登録処理でエラーが発生した場合
-        """
-        self._logger.info(
-            f"📁 ドキュメント登録開始 - group_id: {group_id.value}, directory: {directory}"
-        )
-
-        # 1. サポート対象ファイル一覧を取得
-        file_paths = self._file_reader.list_supported_files(directory)
-        self._logger.info(f"📄 対象ファイル数: {len(file_paths)}")
-
-        # 2. ドキュメントを読み込み
-        documents = self._file_reader.read_documents(file_paths)
-        self._logger.info(f"📖 読み込み完了ファイル数: {len(documents)}")
-
-        if not documents:
-            return RegisterResult(
-                total_files=0, total_chunks=0, total_episodes=0, success=True
-            )
-
-        # 3. 各ドキュメントを処理してエピソードを作成
-        all_episodes = []
-        total_chunks = 0
-        failed_files = []
-
-        for i, document in enumerate(documents, 1):
-            try:
-                self._logger.info(
-                    f"🔄 ファイル処理中 ({i}/{len(documents)}): {document.file_name}"
-                )
-
-                # ドキュメントを解析
-                elements = self._document_parser.parse(document.file_path)
-                self._logger.debug(f"📝 解析完了 - 要素数: {len(elements)}")
-
-                # チャンクに分割
-                chunks = self._document_parser.split_elements(elements, document)
-                self._logger.debug(f"🔀 チャンク分割完了 - チャンク数: {len(chunks)}")
-
-                # チャンクからエピソードを作成
-                episodes = []
-                for j, chunk in enumerate(chunks):
-                    episode = chunk.to_episode(group_id)
-                    episodes.append(episode)
-                    self._logger.debug(
-                        f"📋 エピソード作成 ({j + 1}/{len(chunks)}): {episode.name}"
-                    )
-
-                all_episodes.extend(episodes)
-                total_chunks += len(chunks)
-
-            except Exception as e:
-                failed_files.append(document.file_path)
-                self._logger.error(f"❌ ファイル処理失敗: {document.file_path} - {e}")
-                continue
-
-        # 4. エピソードを一括保存
-        if all_episodes:
-            self._logger.info(f"💾 エピソード一括保存開始 - 件数: {len(all_episodes)}")
-            await self._episode_repository.save_batch(all_episodes)
-            self._logger.info("✅ エピソード一括保存完了")
-
-        return RegisterResult(
-            total_files=len(documents),
-            total_chunks=total_chunks,
-            total_episodes=len(all_episodes),
-            success=True,
-        )
-
     def _process_single_document(
         self, document, group_id: GroupId, index: int, total: int
     ) -> Tuple[List, int, str]:
@@ -177,6 +96,10 @@ class RegisterDocumentUseCase:
         Returns:
             RegisterResult: 登録結果
         """
+        # インフラ初期化（ビジネスロジック実行の前提条件）
+        self._logger.info("🏗️ Graphitiインデックス構築中...")
+        await self._episode_repository.initialize()
+
         self._logger.info(
             f"📁 ドキュメント登録開始（並列処理） - group_id: {group_id.value}, directory: {directory}"
         )

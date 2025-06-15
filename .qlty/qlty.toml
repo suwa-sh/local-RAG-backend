@@ -110,6 +110,7 @@ rules = [
   "radarlint-python:python:S125", # テスト内のコメントは、仕様理解に必要なので除外
   "radarlint-python:python:S5727", # インスタンス化のテストで、常にtrueはあり得る
   "radarlint-python:python:S3776", # 運用スクリプトの複雑度は許容
+  "radarlint-python:python:S5707", # graphitiの仕組みに合わせた例外のテストで必要
   ]
 
 file_patterns = [
@@ -122,4 +123,14 @@ file_patterns = [
     "**/test_*.*",
     "**/spec_*.*",
     "scripts/**",
+]
+
+[[ignore]]
+rules = [
+  "trivy:DS002", # base imageでuser定義済み
+  "trivy:DS026", # docker compose run でone-offのコンテナを起動するため除外
+]
+
+file_patterns = [
+    "Dockerfile",
 ]

@@ -1,4 +1,6 @@
 #!/bin/bash
+set -eu
+
 readonly HASH=$(git rev-parse --short HEAD)
 
 docker tag suwash/graphiti-ingest:latest suwash/graphiti-ingest:$HASH

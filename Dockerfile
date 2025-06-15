@@ -1,39 +1,19 @@
-# Multi-stage build for efficient image size and caching
-FROM python:3.11-slim AS base
-
-# Install system dependencies required by unstructured.io
-RUN apt-get update && apt-get install -y \
-    # Build dependencies
-    g++ \
-    gcc \
-    # PDF processing
-    poppler-utils \
-    # OCR support
-    tesseract-ocr \
-    tesseract-ocr-jpn \
-    && rm -rf /var/lib/apt/lists/*
+# checkov:skip=CKV_DOCKER_2:Using official Unstructured.io image - user management handled by base image
+# checkov:skip=CKV_DOCKER_3:One-off container for document processing - healthcheck not required
+# Use official Unstructured.io Docker image as base (latest stable version)
+FROM quay.io/unstructured-io/unstructured:0.17.9
 
 WORKDIR /app
-
-# Stage 1: Dependencies
-FROM base AS dependencies
-
-# Install pip and setuptools first
-RUN pip install --upgrade pip setuptools wheel
 
 # Copy dependency files
 COPY pyproject.toml .
 COPY requirements.lock .
 
-# Install dependencies directly from requirements.lock
-RUN sed '/-e/d' requirements.lock > requirements.txt && \
+# Install dependencies in single RUN instruction to reduce layers
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install "numpy<2.0.0" --force-reinstall && \
+    sed '/-e/d' requirements.lock > requirements.txt && \
     pip install --no-cache-dir -r requirements.txt
-
-# Stage 2: Production
-FROM base AS production
-
-# Copy dependencies from dependencies stage
-COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
 # Copy source code
 COPY src/ /app/src/
@@ -41,11 +21,11 @@ COPY src/ /app/src/
 # Set environment variables
 ENV PYTHONPATH="/app"
 
-# Create data directories
-RUN mkdir -p /data/input /data/logs
+# Create data directories under /app (writable by default user)
+RUN mkdir -p /app/data/input /app/data/logs
 
 # Set up logging with timestamp
-ENV LOG_DIR="/data/logs"
+ENV LOG_DIR="/app/data/logs"
 
 # Default command with logging
-CMD ["sh", "-c", "python -m src.main.ingest /data/input 2>&1 | tee /data/logs/ingest-$(date +%Y-%m-%d_%H%M%S).log"]
+CMD ["sh", "-c", "python -m src.main.ingest /app/data/input 2>&1 | tee /app/data/logs/ingest-$(date +%Y-%m-%d_%H%M%S).log"]

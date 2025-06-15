@@ -1,8 +1,7 @@
 """RateLimitRetryHandlerのテスト"""
 
 import pytest
-from unittest.mock import Mock, MagicMock
-from typing import Optional
+from unittest.mock import Mock
 
 from src.adapter.rate_limit_retry_handler import RateLimitRetryHandler
 

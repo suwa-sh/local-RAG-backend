@@ -89,11 +89,15 @@ def setup_logging() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("neo4j").setLevel(logging.WARNING)
+    logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)  # Neo4j警告を抑制
     logging.getLogger("unstructured").setLevel(logging.WARNING)
     logging.getLogger("unstructured.trace").setLevel(logging.WARNING)
 
     # Graphitiライブラリのログをプロダクション向けに調整
     logging.getLogger("graphiti_core").setLevel(logging.INFO)
+    logging.getLogger("graphiti_core.utils.maintenance.edge_operations").setLevel(
+        logging.ERROR
+    )  # 日付パース警告を抑制
     # DEBUGログを無効化してパフォーマンス向上
     logging.getLogger("src.usecase.register_document_usecase").setLevel(logging.INFO)
     logging.getLogger("src.adapter.graphiti_episode_repository").setLevel(logging.INFO)
@@ -119,7 +123,7 @@ async def main() -> int:
         config = load_config()
         group_id = GroupId(config.group_id)
 
-        # ユースケースの実行（並列処理）
+        # ユースケースの作成
         usecase = create_usecase()
 
         print(f"🚀 並列処理モードで実行（ワーカー数: {args.workers}）")

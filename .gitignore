@@ -201,3 +201,5 @@ logs/
 
 # data directory
 data/
+
+.claude/settings.local.json

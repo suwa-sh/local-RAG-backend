@@ -87,6 +87,18 @@ class GraphitiEpisodeRepository:
         self._logger.info(f"🔗 Graphitiクライアント初期化完了 - Neo4j: {neo4j_uri}")
         self._logger.info("📋 エンティティキャッシュ初期化完了")
 
+    async def initialize(self) -> None:
+        """
+        Graphitiクライアントの非同期初期化
+        インデックスと制約を構築する
+        """
+        try:
+            await self.client.build_indices_and_constraints()
+            self._logger.info("🏗️ Graphiti インデックスと制約の構築完了")
+        except Exception as e:
+            self._logger.error(f"❌ Graphiti インデックス構築エラー: {e}")
+            raise
+
     async def save(self, episode: Episode) -> None:
         """
         単一のエピソードを保存する
@@ -114,7 +126,7 @@ class GraphitiEpisodeRepository:
         # エラー別のリトライカウンター
         rate_limit_attempts = 0
         index_error_attempts = 0
-        
+
         while True:
             try:
                 await self.client.add_episode(
@@ -153,7 +165,7 @@ class GraphitiEpisodeRepository:
                 if "list index out of range" in str(e):
                     if index_error_attempts < self.retry_handler.max_retries:
                         # 指数バックオフ（1秒、2秒、4秒...）- graphitiエンティティ競合エラー用
-                        wait_time = 2 ** index_error_attempts
+                        wait_time = 2**index_error_attempts
                         self._logger.warning(
                             f"⚠️ Graphitiエンティティ競合エラー。{wait_time}秒後にリトライ "
                             f"(index error attempt {index_error_attempts + 1}/{self.retry_handler.max_retries}): {episode.name}"
