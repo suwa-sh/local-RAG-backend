@@ -6,8 +6,10 @@ from typing import List, Dict
 from graphiti_core.graphiti import Graphiti, EpisodeType
 from graphiti_core.llm_client import OpenAIClient, LLMConfig
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+from graphiti_core.llm_client.errors import RateLimitError
 from src.domain.episode import Episode
 from src.adapter.entity_cache import get_entity_cache
+from src.adapter.rate_limit_retry_handler import RateLimitRetryHandler
 
 
 class GraphitiEpisodeRepository:
@@ -25,6 +27,8 @@ class GraphitiEpisodeRepository:
         embedding_api_key: str,
         embedding_base_url: str,
         embedding_model: str,
+        rate_limit_max_retries: int = 3,
+        rate_limit_default_wait_time: int = 121,
     ) -> None:
         """
         GraphitiEpisodeRepositoryを初期化する
@@ -67,10 +71,19 @@ class GraphitiEpisodeRepository:
             embedder=embedder,
         )
 
+        # ロガーの初期化
+        self._logger = logging.getLogger(__name__)
+
         # エンティティキャッシュの初期化
         self.entity_cache = get_entity_cache()
 
-        self._logger = logging.getLogger(__name__)
+        # Rate limitリトライハンドラーの初期化
+        self.retry_handler = RateLimitRetryHandler(
+            max_retries=rate_limit_max_retries,
+            default_wait_time=rate_limit_default_wait_time,
+            logger=self._logger,
+        )
+
         self._logger.info(f"🔗 Graphitiクライアント初期化完了 - Neo4j: {neo4j_uri}")
         self._logger.info("📋 エンティティキャッシュ初期化完了")
 
@@ -98,19 +111,45 @@ class GraphitiEpisodeRepository:
         self._logger.debug(f"  - episode_type: {episode.episode_type} -> {source_type}")
         self._logger.debug(f"  - body_length: {len(episode.body)}")
 
-        try:
-            await self.client.add_episode(
-                name=episode.name,
-                episode_body=episode.body,
-                source_description=episode.source_description,
-                reference_time=episode.reference_time,
-                source=source_type,
-                group_id=episode.group_id.value,
-            )
-            self._logger.debug(f"✅ エピソード保存完了: {episode.name}")
-        except Exception as e:
-            self._logger.error(f"❌ エピソード保存失敗: {episode.name} - {e}")
-            raise
+        # Rate limitリトライ処理
+        attempt = 0
+        while attempt <= self.retry_handler.max_retries:
+            try:
+                await self.client.add_episode(
+                    name=episode.name,
+                    episode_body=episode.body,
+                    source_description=episode.source_description,
+                    reference_time=episode.reference_time,
+                    source=source_type,
+                    group_id=episode.group_id.value,
+                )
+                self._logger.debug(f"✅ エピソード保存完了: {episode.name}")
+                return
+            except RateLimitError as e:
+                if attempt < self.retry_handler.max_retries:
+                    retry_after = self.retry_handler.extract_retry_after_time(e)
+                    if retry_after:
+                        self._logger.info(
+                            f"🔄 Rate limit detected. Waiting {retry_after} seconds before retry "
+                            f"(attempt {attempt + 1}/{self.retry_handler.max_retries})"
+                        )
+                        await asyncio.sleep(retry_after)
+                    else:
+                        self._logger.info(
+                            f"🔄 Rate limit detected. Using default wait time "
+                            f"({self.retry_handler.default_wait_time} seconds) before retry "
+                            f"(attempt {attempt + 1}/{self.retry_handler.max_retries})"
+                        )
+                        await asyncio.sleep(self.retry_handler.default_wait_time)
+                    attempt += 1
+                else:
+                    self._logger.error(
+                        f"❌ Rate limit error after {self.retry_handler.max_retries} retries: {episode.name}"
+                    )
+                    raise
+            except Exception as e:
+                self._logger.error(f"❌ エピソード保存失敗: {episode.name} - {e}")
+                raise
 
     async def save_batch(
         self, episodes: List[Episode], max_concurrent: int = 3
