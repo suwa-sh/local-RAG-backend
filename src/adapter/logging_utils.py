@@ -29,7 +29,7 @@ class FileContextFilter(logging.Filter):
         # 常にコンテキスト情報を設定（空でもプレースホルダーを表示）
         if file_name:
             # ファイル名から拡張子を除いた短い名前を作成
-            short_name = file_name.split("/")[-1].split(".")[0][:10]
+            short_name = file_name.split("/")[-1].split(".")[0][:20]
             record.file_context = f"[{short_name}]"
         else:
             record.file_context = "[--------]"

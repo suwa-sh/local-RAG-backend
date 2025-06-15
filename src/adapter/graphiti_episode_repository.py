@@ -111,9 +111,11 @@ class GraphitiEpisodeRepository:
         self._logger.debug(f"  - episode_type: {episode.episode_type} -> {source_type}")
         self._logger.debug(f"  - body_length: {len(episode.body)}")
 
-        # Rate limitリトライ処理
-        attempt = 0
-        while attempt <= self.retry_handler.max_retries:
+        # エラー別のリトライカウンター
+        rate_limit_attempts = 0
+        index_error_attempts = 0
+        
+        while True:
             try:
                 await self.client.add_episode(
                     name=episode.name,
@@ -126,22 +128,22 @@ class GraphitiEpisodeRepository:
                 self._logger.debug(f"✅ エピソード保存完了: {episode.name}")
                 return
             except RateLimitError as e:
-                if attempt < self.retry_handler.max_retries:
+                if rate_limit_attempts < self.retry_handler.max_retries:
                     retry_after = self.retry_handler.extract_retry_after_time(e)
                     if retry_after:
                         self._logger.info(
                             f"🔄 Rate limit detected. Waiting {retry_after} seconds before retry "
-                            f"(attempt {attempt + 1}/{self.retry_handler.max_retries})"
+                            f"(rate limit attempt {rate_limit_attempts + 1}/{self.retry_handler.max_retries})"
                         )
                         await asyncio.sleep(retry_after)
                     else:
                         self._logger.info(
                             f"🔄 Rate limit detected. Using default wait time "
                             f"({self.retry_handler.default_wait_time} seconds) before retry "
-                            f"(attempt {attempt + 1}/{self.retry_handler.max_retries})"
+                            f"(rate limit attempt {rate_limit_attempts + 1}/{self.retry_handler.max_retries})"
                         )
                         await asyncio.sleep(self.retry_handler.default_wait_time)
-                    attempt += 1
+                    rate_limit_attempts += 1
                 else:
                     self._logger.error(
                         f"❌ Rate limit error after {self.retry_handler.max_retries} retries: {episode.name}"
@@ -149,15 +151,15 @@ class GraphitiEpisodeRepository:
                     raise
             except IndexError as e:
                 if "list index out of range" in str(e):
-                    if attempt < self.retry_handler.max_retries:
+                    if index_error_attempts < self.retry_handler.max_retries:
                         # 指数バックオフ（1秒、2秒、4秒...）- graphitiエンティティ競合エラー用
-                        wait_time = 2 ** attempt
+                        wait_time = 2 ** index_error_attempts
                         self._logger.warning(
                             f"⚠️ Graphitiエンティティ競合エラー。{wait_time}秒後にリトライ "
-                            f"(attempt {attempt + 1}/{self.retry_handler.max_retries}): {episode.name}"
+                            f"(index error attempt {index_error_attempts + 1}/{self.retry_handler.max_retries}): {episode.name}"
                         )
                         await asyncio.sleep(wait_time)
-                        attempt += 1
+                        index_error_attempts += 1
                     else:
                         self._logger.error(
                             f"❌ エンティティ競合エラー（最大リトライ回数超過）: {episode.name}"

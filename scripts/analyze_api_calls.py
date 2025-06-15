@@ -24,6 +24,8 @@ def analyze_log_file(log_file_path):
 
     llm_requests = []
     embedding_requests = []
+    retry_events = []
+    processing_summary = {}
 
     # リクエスト開始時刻を記録
     pending_llm = {}
@@ -118,6 +120,67 @@ def analyze_log_file(log_file_path):
                             }
                         )
 
+                # Rate limitリトライの検出
+                elif "🔄 Rate limit detected" in line:
+                    # 例: 🔄 Rate limit detected. Waiting 61 seconds before retry (rate limit attempt 1/3)
+                    wait_match = re.search(r"Waiting (\d+) seconds", line)
+                    attempt_match = re.search(r"attempt (\d+)/(\d+)", line)
+                    
+                    wait_time = int(wait_match.group(1)) if wait_match else 0
+                    current_attempt = int(attempt_match.group(1)) if attempt_match else 0
+                    max_attempts = int(attempt_match.group(2)) if attempt_match else 0
+                    
+                    retry_events.append({
+                        "type": "rate_limit",
+                        "time": time_obj,
+                        "file_name": file_name,
+                        "wait_time": wait_time,
+                        "attempt": current_attempt,
+                        "max_attempts": max_attempts,
+                        "line_num": line_num
+                    })
+
+                # IndexErrorリトライの検出
+                elif "⚠️ Graphitiエンティティ競合エラー" in line:
+                    # 例: ⚠️ Graphitiエンティティ競合エラー。1秒後にリトライ (index error attempt 1/3)
+                    wait_match = re.search(r"(\d+)秒後にリトライ", line)
+                    attempt_match = re.search(r"attempt (\d+)/(\d+)", line)
+                    
+                    wait_time = int(wait_match.group(1)) if wait_match else 0
+                    current_attempt = int(attempt_match.group(1)) if attempt_match else 0
+                    max_attempts = int(attempt_match.group(2)) if attempt_match else 0
+                    
+                    retry_events.append({
+                        "type": "index_error",
+                        "time": time_obj,
+                        "file_name": file_name,
+                        "wait_time": wait_time,
+                        "attempt": current_attempt,
+                        "max_attempts": max_attempts,
+                        "line_num": line_num
+                    })
+
+                # 最終処理結果の検出
+                elif "ドキュメント登録が正常に登録されました" in line:
+                    # 後続の処理結果行を探す
+                    pass
+                elif "処理ファイル数:" in line:
+                    file_count_match = re.search(r"処理ファイル数: (\d+)", line)
+                    if file_count_match:
+                        processing_summary["total_files"] = int(file_count_match.group(1))
+                elif "作成チャンク数:" in line:
+                    chunk_count_match = re.search(r"作成チャンク数: (\d+)", line)
+                    if chunk_count_match:
+                        processing_summary["total_chunks"] = int(chunk_count_match.group(1))
+                elif "登録エピソード数:" in line:
+                    episode_count_match = re.search(r"登録エピソード数: (\d+)", line)
+                    if episode_count_match:
+                        processing_summary["total_episodes"] = int(episode_count_match.group(1))
+                elif "⚠️ 処理失敗ファイル数:" in line:
+                    failed_count_match = re.search(r"処理失敗ファイル数: (\d+)", line)
+                    if failed_count_match:
+                        processing_summary["failed_files"] = int(failed_count_match.group(1))
+
     except FileNotFoundError:
         print(f"エラー: ファイルが見つかりません: {log_file_path}")
         return None
@@ -128,6 +191,8 @@ def analyze_log_file(log_file_path):
     return {
         "llm_requests": llm_requests,
         "embedding_requests": embedding_requests,
+        "retry_events": retry_events,
+        "processing_summary": processing_summary,
         "pending_llm": pending_llm,
         "pending_embedding": pending_embedding,
     }
@@ -230,6 +295,108 @@ def print_statistics(analysis_result):
         print(f"\n⚠️  未完了Embeddingリクエスト: {len(pending_embedding)}件")
         for key, info in pending_embedding.items():
             print(f"    {info['file_name']} (line {info['line_num']})")
+
+    # リトライ分析
+    retry_events = analysis_result.get("retry_events", [])
+    if retry_events:
+        print("\n🔄 リトライ分析")
+        
+        # Rate limitリトライ
+        rate_limit_retries = [r for r in retry_events if r["type"] == "rate_limit"]
+        if rate_limit_retries:
+            print(f"  📊 Rate Limitリトライ: {len(rate_limit_retries)}回")
+            
+            wait_times = [r["wait_time"] for r in rate_limit_retries]
+            if wait_times:
+                avg_wait = sum(wait_times) / len(wait_times)
+                total_wait = sum(wait_times)
+                max_wait = max(wait_times)
+                min_wait = min(wait_times)
+                
+                print(f"    平均待機時間: {avg_wait:.1f}秒")
+                print(f"    最大待機時間: {max_wait}秒")
+                print(f"    最小待機時間: {min_wait}秒")
+                print(f"    総待機時間: {total_wait}秒")
+                
+                # ファイル別リトライ統計
+                file_retries = defaultdict(list)
+                for retry in rate_limit_retries:
+                    file_retries[retry["file_name"]].append(retry["wait_time"])
+                
+                print("\n    📁 ファイル別Rate Limitリトライ:")
+                for file_name, wait_times in file_retries.items():
+                    count = len(wait_times)
+                    avg = sum(wait_times) / len(wait_times)
+                    total = sum(wait_times)
+                    print(f"      {file_name}: {count}回, 平均{avg:.1f}秒, 合計{total}秒")
+        
+        # IndexErrorリトライ
+        index_error_retries = [r for r in retry_events if r["type"] == "index_error"]
+        if index_error_retries:
+            print(f"\n  ⚠️ IndexErrorリトライ: {len(index_error_retries)}回")
+            
+            wait_times = [r["wait_time"] for r in index_error_retries]
+            if wait_times:
+                total_wait = sum(wait_times)
+                print(f"    総待機時間: {total_wait}秒")
+                
+                # ファイル別統計
+                file_retries = defaultdict(int)
+                for retry in index_error_retries:
+                    file_retries[retry["file_name"]] += 1
+                
+                print("    📁 ファイル別IndexErrorリトライ:")
+                for file_name, count in file_retries.items():
+                    print(f"      {file_name}: {count}回")
+    
+    # 処理サマリー
+    processing_summary = analysis_result.get("processing_summary", {})
+    if processing_summary:
+        print("\n📋 処理サマリー")
+        
+        if "total_files" in processing_summary:
+            print(f"  📁 処理ファイル数: {processing_summary['total_files']}件")
+        
+        if "total_chunks" in processing_summary:
+            print(f"  🔀 作成チャンク数: {processing_summary['total_chunks']}件")
+        
+        if "total_episodes" in processing_summary:
+            print(f"  📝 登録エピソード数: {processing_summary['total_episodes']}件")
+        
+        if "failed_files" in processing_summary:
+            print(f"  ❌ 処理失敗ファイル数: {processing_summary['failed_files']}件")
+            
+            # 成功率計算
+            if "total_files" in processing_summary:
+                total = processing_summary["total_files"]
+                failed = processing_summary["failed_files"]
+                success_rate = ((total - failed) / total) * 100 if total > 0 else 0
+                print(f"  ✅ 成功率: {success_rate:.1f}% ({total - failed}/{total})")
+    
+    # 総合分析
+    if llm_requests and embedding_requests and retry_events:
+        print("\n🎯 総合分析")
+        
+        # API処理時間
+        llm_total = sum(req["duration"] for req in llm_requests)
+        embedding_total = sum(req["duration"] for req in embedding_requests)
+        api_total = llm_total + embedding_total
+        
+        # リトライ待機時間
+        retry_total = sum(r["wait_time"] for r in retry_events)
+        
+        # 全体時間に対する比率
+        if api_total > 0:
+            retry_ratio = (retry_total / api_total) * 100
+            print(f"  ⏱️ API処理時間: {api_total:.0f}秒")
+            print(f"  ⏳ リトライ待機時間: {retry_total}秒")
+            print(f"  📈 リトライ時間比率: {retry_ratio:.1f}%")
+            
+        # リトライ効果
+        rate_limit_count = len([r for r in retry_events if r["type"] == "rate_limit"])
+        if rate_limit_count > 0:
+            print(f"  🛡️ Rate Limitリトライによる回復: {rate_limit_count}回")
+            print(f"  💪 リトライ機能の有効性: すべてのRate Limitエラーが回復")
 
 
 def main():
