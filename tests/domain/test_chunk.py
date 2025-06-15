@@ -22,6 +22,7 @@ class TestChunk:
             file_name="sample.pdf",
             file_type="pdf",
             content="This is sample content...",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         # ------------------------------
@@ -54,6 +55,7 @@ class TestChunk:
             file_name="test.txt",
             file_type="txt",
             content="content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         # ------------------------------
@@ -79,6 +81,7 @@ class TestChunk:
             file_name="test.txt",
             file_type="txt",
             content="content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         # ------------------------------
@@ -104,6 +107,7 @@ class TestChunk:
             file_name="test.txt",
             file_type="txt",
             content="test content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         chunk1 = Chunk(
@@ -134,6 +138,7 @@ class TestChunk:
             file_name="test.txt",
             file_type="txt",
             content="test content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         chunk1 = Chunk(
@@ -162,11 +167,13 @@ class TestChunk:
         chunk_id = "sample_chunk"
         text = "This is chunk content for episode"
         metadata = {"position": 0}
+        file_last_modified = datetime(2025, 6, 13, 15, 30, 45)
         source_document = Document(
             file_path="/docs/sample.pdf",
             file_name="sample.pdf",
             file_type="pdf",
             content="original content",
+            file_last_modified=file_last_modified,
         )
         group_id = GroupId("default")
 
@@ -190,9 +197,8 @@ class TestChunk:
         assert episode.source_description == f"Source file: {source_document.file_name}"
         assert episode.episode_type == "text"
         assert episode.group_id == group_id
-        # reference_timeは現在時刻に近い値であることを確認
-        time_diff = abs((datetime.now() - episode.reference_time).total_seconds())
-        assert time_diff < 5  # 5秒以内の差であることを確認
+        # reference_timeはファイルの更新日時と同じであることを確認
+        assert episode.reference_time == file_last_modified
 
     def test_Chunkハッシュ_同じ値のインスタンス同士_同じハッシュ値であること(self):
         # ------------------------------
@@ -206,6 +212,7 @@ class TestChunk:
             file_name="hash_test.txt",
             file_type="txt",
             content="hash test content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         chunk1 = Chunk(

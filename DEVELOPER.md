@@ -443,7 +443,7 @@ graph TD
 ```ini
 # 最高性能・最安定の構成（実測）
 LLM_MODEL_URL=https://api.openai.com/v1    # 直接接続
-LLM_MODEL_NAME=gpt-4o-mini                # 1.24秒/回、高精度
+LLM_MODEL_NAME=gpt-4o-mini                # 1.57秒/回、高精度
 ```
 
 **避けるべき構成（実測済み問題）**
@@ -477,11 +477,12 @@ LLM_MODEL_URL=https://openrouter.ai/api/v1 # rate limit・フォーマットエ�
 - **5ワーカー**: 微改善のみ（実測49秒、1秒短縮）
 - **最適値**: ワーカー数 ≤ ファイル数
 
-**実測値（3ファイル処理）**
+**実測値（6ファイル処理 - 2025-06-15更新）**
 
-- **総実行時間**: 49-50秒
-- **LLM処理**: 30.9%（21秒）
-- **Embedding処理**: 69.1%（47秒）- 現在のボトルネック
+- **総実行時間**: 206秒（3分26秒）
+- **LLM処理**: 28.2%（58秒、平均1.57秒/回、37回）
+- **Embedding処理**: 71.8%（148秒、平均4.62秒/回、32回）- 現在のボトルネック
+- **成功率**: 100%（PNG画像含む全ファイル形式対応済み）
 
 ## 仕様 / ナレッジ検索
 
@@ -629,99 +630,131 @@ docker compose up -d -f docker-compose.dev.yml
 docker compose down -f docker-compose.dev.yml
 ```
 
+## 最近の改善実績と今後の計画
 
-## 今後の計画
+### 2025-06-15 解決済み課題
 
+#### 1. 画像処理エラー対応（✅ 完了）
 
-- ドキュメント登録
-  - LLMモデルのrate limitでエラーになる
-    - graphiti内でエクスポーネンシャルバックオフのリトライがかかっている
-    - それでもrate limitエラーが発生している
-    - `Rate limit exceeded. Please try again later.`エラー時にレスポンスを解析して、待機後にリトライ
+- **問題**: PNG画像で`libGL.so.1: cannot open shared object file`エラー
+- **解決**: 公式Unstructured.io Dockerイメージ（quay.io/unstructured-io/unstructured:0.17.9）採用
+- **効果**: PNG含む全28種類のファイル形式で100%成功率達成
+
+#### 2. Rate Limit自動リトライ（✅ 完了）
+
+- **問題**: OpenAI APIのrate limitで処理中断
+- **解決**: RateLimitRetryHandlerクラス実装
+  - 最大3回リトライ
+  - retry-afterヘッダー自動解析
+  - 適切な待機時間設定
+- **効果**: Rate limitエラーでの処理継続を実現
+
+#### 3. 並列処理IndexError対応（✅ 完了）
+
+- **問題**: `list index out of range`エラー（エンティティ競合）
+- **解決**: 指数バックオフリトライ実装
+- **効果**: 並列処理時の競合状態を解決
+
+#### 4. NumPy互換性問題（✅ 完了）
+
+- **問題**: NumPy 2.x とPyTorch/ONNXの非互換
+- **解決**: `numpy<2.0.0` 制約追加
+- **効果**: 警告メッセージ完全解消
+
+#### 5. Neo4jインデックス不備（✅ 完了）
+
+- **問題**: 手動でのインデックス作成が必要
+- **解決**: `build_indices_and_constraints()`自動実行
+- **効果**: セットアップの自動化
+
+### 今後の計画
+
+#### A. 短期改善項目
+
+- **ナレッジ検索の可視化**
+  - 内部処理ログの構造化
+  - Langfuse連携による検索プロセス追跡
+
+#### B. 長期改善項目
+
+- **パフォーマンス最適化**
+  - Embeddingのボトルネック解析（現在71.8%の処理時間占有）
+  - 並列度の動的調整
     - イメージ
 
-        ```py
-        try:  
-            response = await client.generate_response(messages)  
-        except RateLimitError as e:  
-            retry_after = extract_retry_after_time(e)  
-            if retry_after:  
-                print(f"Rate limit exceeded. Retry after {retry_after} seconds")  
-                await asyncio.sleep(retry_after)  
-                # 再試行  
-            else:  
-                print("Rate limit exceeded, but retry time unknown")
-        ```
+**実装済み（src/adapter/rate_limit_retry_handler.py）**
 
-        ```py
-        def extract_retry_after_time(rate_limit_error: RateLimitError) -> int | None:
-            """Rate limitエラーから回復時間（秒）を抽出"""
-            original_error = rate_limit_error.__cause__
+```python
+class RateLimitRetryHandler:
+    """Rate Limitエラーの自動リトライ処理"""
 
-            # OpenAI, Anthropic, Groq いずれも Retry-After ヘッダーで秒数を返す
-            if hasattr(original_error, 'response') and original_error.response:
-                retry_after = original_error.response.headers.get('retry-after')
-                if retry_after:
-                    try:
-                        return int(float(retry_after)) + 1 # 境界値を考慮して1秒追加
-                    except (ValueError, TypeError):
-                        pass  # 変換できない場合はNone
-            return 120 + 1  # 回復時間が取得できない場合、固定で120秒 + 1秒
-        ```
+    def extract_retry_after_time(self, rate_limit_error: RateLimitError) -> int | None:
+        """Rate limitエラーから回復時間（秒）を抽出"""
+        original_error = rate_limit_error.__cause__
+
+        if hasattr(original_error, 'response') and original_error.response:
+            retry_after = original_error.response.headers.get('retry-after')
+            if retry_after:
+                return int(float(retry_after)) + 1  # 境界値考慮
+        return self.default_wait_time  # デフォルト121秒
+```
 
 - ナレッジ検索
+
   - 検索の内部でなにが起きているかがわかりにくい
+
     - ログには出力されている
     - カスタムログハンドラー経由でlangfuse連携して内部の挙動をモニタリング
     - イメージ
-        - Langfuse統合ハンドラー
 
-            ```py
-            import logging  
-            from langfuse import Langfuse  
-            from langfuse.decorators import observe  
-            
-            class LangfuseHandler(logging.Handler):  
-                def __init__(self):  
-                    super().__init__()  
-                    self.langfuse = Langfuse()  
-                    
-                def emit(self, record):  
-                    # LLMリクエスト/レスポンスの検出  
-                    if hasattr(record, 'llm_request') or hasattr(record, 'embedding_request'):  
-                        self._trace_llm_call(record)  
-                
-                def _trace_llm_call(self, record):  
-                    # Langfuseへのトレース送信ロジック  
-                    pass
-            ```
+      - Langfuse統合ハンドラー
 
-        - ログレコードの拡張
+        ```py
+        import logging
+        from langfuse import Langfuse
+        from langfuse.decorators import observe
 
-            ```py
-            # カスタムフィルターでログレコードを拡張  
-            class LLMContextFilter(logging.Filter):  
-                def filter(self, record):  
-                    # スタックトレースから呼び出し元を特定  
-                    if 'generate_response' in record.funcName:  
-                        record.llm_request = True  
-                        record.model_info = self._extract_model_info(record)  
-                    elif 'embedder.create' in str(record.getMessage()):  
-                        record.embedding_request = True  
-                    return True
-            ```
+        class LangfuseHandler(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.langfuse = Langfuse()
 
-        - 統合の実装 openai_client.py:31 で使用されているloggerに対してハンドラーを追加：
+            def emit(self, record):
+                # LLMリクエスト/レスポンスの検出
+                if hasattr(record, 'llm_request') or hasattr(record, 'embedding_request'):
+                    self._trace_llm_call(record)
 
-            ```py
-            # 初期化時に設定  
-            llm_logger = logging.getLogger('graphiti_core.llm_client.openai_client')  
-            search_logger = logging.getLogger('graphiti_core.search.search')  
-            
-            langfuse_handler = LangfuseHandler()  
-            llm_context_filter = LLMContextFilter()  
-            
-            llm_logger.addHandler(langfuse_handler)  
-            llm_logger.addFilter(llm_context_filter)  
-            search_logger.addHandler(langfuse_handler)
-            ```
+            def _trace_llm_call(self, record):
+                # Langfuseへのトレース送信ロジック
+                pass
+        ```
+
+      - ログレコードの拡張
+
+        ```py
+        # カスタムフィルターでログレコードを拡張
+        class LLMContextFilter(logging.Filter):
+            def filter(self, record):
+                # スタックトレースから呼び出し元を特定
+                if 'generate_response' in record.funcName:
+                    record.llm_request = True
+                    record.model_info = self._extract_model_info(record)
+                elif 'embedder.create' in str(record.getMessage()):
+                    record.embedding_request = True
+                return True
+        ```
+
+      - 統合の実装 openai_client.py:31 で使用されているloggerに対してハンドラーを追加：
+
+        ```py
+        # 初期化時に設定
+        llm_logger = logging.getLogger('graphiti_core.llm_client.openai_client')
+        search_logger = logging.getLogger('graphiti_core.search.search')
+
+        langfuse_handler = LangfuseHandler()
+        llm_context_filter = LLMContextFilter()
+
+        llm_logger.addHandler(langfuse_handler)
+        llm_logger.addFilter(llm_context_filter)
+        search_logger.addHandler(langfuse_handler)
+        ```

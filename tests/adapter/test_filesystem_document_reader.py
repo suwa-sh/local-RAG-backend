@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import patch
 from pathlib import Path
+from datetime import datetime
 
 from src.adapter.filesystem_document_reader import FileSystemDocumentReader
 from src.domain.document import Document
@@ -129,7 +130,13 @@ class TestFileSystemDocumentReader:
                 "src.adapter.filesystem_document_reader.Path.read_text"
             ) as mock_read_text:
                 mock_read_text.return_value = file_content
-                document = reader.read_document(file_path)
+                with patch(
+                    "src.adapter.filesystem_document_reader.Path.stat"
+                ) as mock_stat:
+                    mock_stat.return_value.st_mtime = (
+                        1672531200.0  # 2023-01-01 00:00:00
+                    )
+                    document = reader.read_document(file_path)
 
         # ------------------------------
         # 検証 (Assert)
@@ -160,7 +167,13 @@ class TestFileSystemDocumentReader:
                 mock_read_text.side_effect = UnicodeDecodeError(
                     "utf-8", b"", 0, 1, "error"
                 )
-                document = reader.read_document(file_path)
+                with patch(
+                    "src.adapter.filesystem_document_reader.Path.stat"
+                ) as mock_stat:
+                    mock_stat.return_value.st_mtime = (
+                        1672531200.0  # 2023-01-01 00:00:00
+                    )
+                    document = reader.read_document(file_path)
 
         # ------------------------------
         # 検証 (Assert)
@@ -215,11 +228,27 @@ class TestFileSystemDocumentReader:
         file_paths = ["/docs/file1.txt", "/docs/file2.pdf", "/docs/file3.md"]
 
         expected_documents = [
-            Document("/docs/file1.txt", "file1.txt", "txt", "Content 1"),
             Document(
-                "/docs/file2.pdf", "file2.pdf", "pdf", "<バイナリファイル: file2.pdf>"
+                "/docs/file1.txt",
+                "file1.txt",
+                "txt",
+                "Content 1",
+                datetime(2025, 6, 13, 10, 0, 0),
             ),
-            Document("/docs/file3.md", "file3.md", "md", "# Content 3"),
+            Document(
+                "/docs/file2.pdf",
+                "file2.pdf",
+                "pdf",
+                "<バイナリファイル: file2.pdf>",
+                datetime(2025, 6, 13, 11, 0, 0),
+            ),
+            Document(
+                "/docs/file3.md",
+                "file3.md",
+                "md",
+                "# Content 3",
+                datetime(2025, 6, 13, 12, 0, 0),
+            ),
         ]
 
         # ------------------------------

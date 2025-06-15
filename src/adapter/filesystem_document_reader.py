@@ -1,5 +1,6 @@
 """FileSystemDocumentReader - ファイルシステムからの読み込み"""
 
+from datetime import datetime
 from pathlib import Path
 from typing import List
 from src.domain.document import Document
@@ -79,11 +80,15 @@ class FileSystemDocumentReader:
             # バイナリファイルの場合は内容を文字列として表現
             content = f"<バイナリファイル: {file_name}>"
 
+        # ファイルの最終更新日時を取得
+        file_last_modified = datetime.fromtimestamp(path.stat().st_mtime)
+
         return Document(
             file_path=str(path.absolute()),
             file_name=file_name,
             file_type=file_type,
             content=content,
+            file_last_modified=file_last_modified,
         )
 
     def read_documents(self, file_paths: List[str]) -> List[Document]:

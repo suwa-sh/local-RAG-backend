@@ -1,5 +1,6 @@
 """Document値オブジェクト"""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Set, ClassVar
 
@@ -45,6 +46,7 @@ class Document:
         file_name: str,
         file_type: str,
         content: str,
+        file_last_modified: datetime,
     ) -> None:
         """
         Documentを作成する
@@ -54,6 +56,7 @@ class Document:
             file_name: ファイル名
             file_type: ファイルタイプ（拡張子）
             content: ファイル内容
+            file_last_modified: ファイルの最終更新日時
 
         Raises:
             ValueError: file_path、file_name、contentが空文字列の場合、
@@ -72,6 +75,7 @@ class Document:
         self._file_name = file_name
         self._file_type = file_type
         self._content = content
+        self._file_last_modified = file_last_modified
 
     @property
     def file_path(self) -> str:
@@ -92,6 +96,11 @@ class Document:
     def content(self) -> str:
         """ファイル内容を取得する"""
         return self._content
+
+    @property
+    def file_last_modified(self) -> datetime:
+        """ファイルの最終更新日時を取得する"""
+        return self._file_last_modified
 
     @classmethod
     def from_file(cls, file_path: str) -> "Document":
@@ -123,11 +132,15 @@ class Document:
             # バイナリファイルの場合は内容を文字列として表現
             content = f"<バイナリファイル: {file_name}>"
 
+        # ファイルの最終更新日時を取得
+        file_last_modified = datetime.fromtimestamp(path.stat().st_mtime)
+
         return cls(
             file_path=str(path.absolute()),
             file_name=file_name,
             file_type=file_type,
             content=content,
+            file_last_modified=file_last_modified,
         )
 
     def __eq__(self, other: object) -> bool:
@@ -139,11 +152,20 @@ class Document:
             and self._file_name == other._file_name
             and self._file_type == other._file_type
             and self._content == other._content
+            and self._file_last_modified == other._file_last_modified
         )
 
     def __hash__(self) -> int:
         """ハッシュ値計算"""
-        return hash((self._file_path, self._file_name, self._file_type, self._content))
+        return hash(
+            (
+                self._file_path,
+                self._file_name,
+                self._file_type,
+                self._content,
+                self._file_last_modified,
+            )
+        )
 
     def __str__(self) -> str:
         """文字列表現"""

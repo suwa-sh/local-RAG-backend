@@ -76,7 +76,7 @@ class Chunk:
         name = f"{self._source_document.file_name} - {self._id}"
         body = self._text
         source_description = f"Source file: {self._source_document.file_name}"
-        reference_time = datetime.now()
+        reference_time = self._source_document.file_last_modified
         episode_type = "text"
 
         return Episode(

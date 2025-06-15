@@ -1,6 +1,7 @@
 """Document値オブジェクトのテスト"""
 
 import pytest
+from datetime import datetime
 from src.domain.document import Document
 
 
@@ -15,6 +16,7 @@ class TestDocument:
         file_name = "sample.pdf"
         file_type = "pdf"
         content = "This is sample content..."
+        file_last_modified = datetime(2025, 6, 13, 10, 0, 0)
 
         # ------------------------------
         # 実行 (Act)
@@ -24,6 +26,7 @@ class TestDocument:
             file_name=file_name,
             file_type=file_type,
             content=content,
+            file_last_modified=file_last_modified,
         )
 
         # ------------------------------
@@ -33,6 +36,7 @@ class TestDocument:
         assert document.file_name == file_name
         assert document.file_type == file_type
         assert document.content == content
+        assert document.file_last_modified == file_last_modified
 
     def test_Document作成_file_pathが空文字の場合_例外が発生すること(self):
         # ------------------------------
@@ -52,6 +56,7 @@ class TestDocument:
                 file_name=file_name,
                 file_type=file_type,
                 content=content,
+                file_last_modified=datetime.now(),
             )
 
     def test_Document作成_file_nameが空文字の場合_例外が発生すること(self):
@@ -72,6 +77,7 @@ class TestDocument:
                 file_name=file_name,
                 file_type=file_type,
                 content=content,
+                file_last_modified=datetime.now(),
             )
 
     def test_Document作成_contentが空文字の場合_例外が発生すること(self):
@@ -92,6 +98,7 @@ class TestDocument:
                 file_name=file_name,
                 file_type=file_type,
                 content=content,
+                file_last_modified=datetime.now(),
             )
 
     def test_Document作成_file_typeがサポートされていない場合_例外が発生すること(self):
@@ -112,6 +119,7 @@ class TestDocument:
                 file_name=file_name,
                 file_type=file_type,
                 content=content,
+                file_last_modified=datetime.now(),
             )
 
     def test_Document等価性_同じ値のインスタンス同士_等しいこと(self):
@@ -122,12 +130,14 @@ class TestDocument:
         file_name = "test.txt"
         file_type = "txt"
         content = "test content"
+        file_last_modified = datetime(2025, 6, 13, 10, 0, 0)
 
         document1 = Document(
             file_path=file_path,
             file_name=file_name,
             file_type=file_type,
             content=content,
+            file_last_modified=file_last_modified,
         )
 
         document2 = Document(
@@ -135,6 +145,7 @@ class TestDocument:
             file_name=file_name,
             file_type=file_type,
             content=content,
+            file_last_modified=file_last_modified,
         )
 
         # ------------------------------
@@ -151,6 +162,7 @@ class TestDocument:
             file_name="file1.txt",
             file_type="txt",
             content="content1",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         document2 = Document(
@@ -158,6 +170,7 @@ class TestDocument:
             file_name="file2.txt",
             file_type="txt",
             content="content2",
+            file_last_modified=datetime(2025, 6, 13, 11, 0, 0),
         )
 
         # ------------------------------
@@ -209,6 +222,7 @@ class TestDocument:
                 file_name=f"sample.{file_type}",
                 file_type=file_type,
                 content=f"Sample {description} content",
+                file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
             )
             assert document.file_type == file_type
             assert document.file_name == f"sample.{file_type}"

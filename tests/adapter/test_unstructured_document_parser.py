@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, patch
+from datetime import datetime
 
 from src.adapter.unstructured_document_parser import UnstructuredDocumentParser
 from src.domain.document import Document
@@ -97,6 +98,7 @@ class TestUnstructuredDocumentParser:
             file_name="test.txt",
             file_type="txt",
             content="test content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         mock_elements = [
@@ -144,6 +146,7 @@ class TestUnstructuredDocumentParser:
             file_name="long.txt",
             file_type="txt",
             content="long content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
 
         # 長いテキストのElement（モック）
@@ -183,6 +186,7 @@ class TestUnstructuredDocumentParser:
             file_name="empty.txt",
             file_type="txt",
             content="empty",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
         )
         mock_elements = []
 
