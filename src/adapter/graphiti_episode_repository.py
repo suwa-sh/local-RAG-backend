@@ -147,6 +147,25 @@ class GraphitiEpisodeRepository:
                         f"❌ Rate limit error after {self.retry_handler.max_retries} retries: {episode.name}"
                     )
                     raise
+            except IndexError as e:
+                if "list index out of range" in str(e):
+                    if attempt < self.retry_handler.max_retries:
+                        # 指数バックオフ（1秒、2秒、4秒...）- graphitiエンティティ競合エラー用
+                        wait_time = 2 ** attempt
+                        self._logger.warning(
+                            f"⚠️ Graphitiエンティティ競合エラー。{wait_time}秒後にリトライ "
+                            f"(attempt {attempt + 1}/{self.retry_handler.max_retries}): {episode.name}"
+                        )
+                        await asyncio.sleep(wait_time)
+                        attempt += 1
+                    else:
+                        self._logger.error(
+                            f"❌ エンティティ競合エラー（最大リトライ回数超過）: {episode.name}"
+                        )
+                        raise
+                else:
+                    self._logger.error(f"❌ IndexError（非競合）: {episode.name} - {e}")
+                    raise
             except Exception as e:
                 self._logger.error(f"❌ エピソード保存失敗: {episode.name} - {e}")
                 raise

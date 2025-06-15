@@ -431,3 +431,163 @@ class TestGraphitiEpisodeRepository:
         # リトライなしで1回のみ呼ばれる
         assert mock_client.add_episode.call_count == 1
         mock_sleep.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_save_IndexError_list_index_out_of_rangeが発生した場合_指数バックオフでリトライされること(self):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        episode = Episode(
+            name="test.pdf - chunk 0",
+            body="Test content",
+            source_description="Source file: test.pdf",
+            reference_time=datetime(2025, 6, 13, 10, 0, 0),
+            episode_type="text",
+            group_id=GroupId("default"),
+        )
+
+        mock_client = AsyncMock()
+        # 最初2回はIndexError、3回目は成功
+        mock_client.add_episode = AsyncMock(
+            side_effect=[
+                IndexError("list index out of range"),
+                IndexError("list index out of range"),
+                None,  # 成功
+            ]
+        )
+
+        # ------------------------------
+        # 実行 (Act)
+        # ------------------------------
+        with patch(
+            "src.adapter.graphiti_episode_repository.Graphiti"
+        ) as mock_client_class, patch("asyncio.sleep") as mock_sleep:
+            mock_client_class.return_value = mock_client
+            repository = GraphitiEpisodeRepository(
+                neo4j_uri="bolt://localhost:7687",
+                neo4j_user="neo4j",
+                neo4j_password="password",
+                llm_api_key="sk-1234",
+                llm_base_url="http://localhost:4000/v1",
+                llm_model="claude-sonnet-4",
+                rerank_model="gpt-4.1-nano",
+                embedding_api_key="dummy",
+                embedding_base_url="http://localhost:11434/v1",
+                embedding_model="ruri-v3-310m",
+                rate_limit_max_retries=3,
+                rate_limit_default_wait_time=121,
+            )
+
+            await repository.save(episode)
+
+        # ------------------------------
+        # 検証 (Assert)
+        # ------------------------------
+        # 3回試行される（2回エラー、1回成功）
+        assert mock_client.add_episode.call_count == 3
+        # 指数バックオフ: 1秒、2秒で2回sleep
+        assert mock_sleep.call_count == 2
+        mock_sleep.assert_any_call(1)  # 2^0 = 1秒
+        mock_sleep.assert_any_call(2)  # 2^1 = 2秒
+
+    @pytest.mark.asyncio
+    async def test_save_IndexError_list_index_out_of_rangeが最大リトライ回数に達した場合_例外が再発生すること(self):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        episode = Episode(
+            name="test.pdf - chunk 0",
+            body="Test content",
+            source_description="Source file: test.pdf",
+            reference_time=datetime(2025, 6, 13, 10, 0, 0),
+            episode_type="text",
+            group_id=GroupId("default"),
+        )
+
+        mock_client = AsyncMock()
+        # 常にIndexErrorを発生
+        mock_client.add_episode = AsyncMock(
+            side_effect=IndexError("list index out of range")
+        )
+
+        # ------------------------------
+        # 実行 (Act) & 検証 (Assert)
+        # ------------------------------
+        with patch(
+            "src.adapter.graphiti_episode_repository.Graphiti"
+        ) as mock_client_class, patch("asyncio.sleep") as mock_sleep:
+            mock_client_class.return_value = mock_client
+            repository = GraphitiEpisodeRepository(
+                neo4j_uri="bolt://localhost:7687",
+                neo4j_user="neo4j",
+                neo4j_password="password",
+                llm_api_key="sk-1234",
+                llm_base_url="http://localhost:4000/v1",
+                llm_model="claude-sonnet-4",
+                rerank_model="gpt-4.1-nano",
+                embedding_api_key="dummy",
+                embedding_base_url="http://localhost:11434/v1",
+                embedding_model="ruri-v3-310m",
+                rate_limit_max_retries=3,
+                rate_limit_default_wait_time=121,
+            )
+
+            with pytest.raises(IndexError, match="list index out of range"):
+                await repository.save(episode)
+
+        # 最大リトライ回数+1回試行される（4回）
+        assert mock_client.add_episode.call_count == 4
+        # 指数バックオフ: 1秒、2秒、4秒で3回sleep
+        assert mock_sleep.call_count == 3
+        mock_sleep.assert_any_call(1)  # 2^0 = 1秒
+        mock_sleep.assert_any_call(2)  # 2^1 = 2秒
+        mock_sleep.assert_any_call(4)  # 2^2 = 4秒
+
+    @pytest.mark.asyncio
+    async def test_save_IndexError_他のメッセージの場合_リトライされずに例外が再発生すること(self):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        episode = Episode(
+            name="test.pdf - chunk 0",
+            body="Test content",
+            source_description="Source file: test.pdf",
+            reference_time=datetime(2025, 6, 13, 10, 0, 0),
+            episode_type="text",
+            group_id=GroupId("default"),
+        )
+
+        mock_client = AsyncMock()
+        # 異なるIndexErrorメッセージ
+        mock_client.add_episode = AsyncMock(
+            side_effect=IndexError("other index error")
+        )
+
+        # ------------------------------
+        # 実行 (Act) & 検証 (Assert)
+        # ------------------------------
+        with patch(
+            "src.adapter.graphiti_episode_repository.Graphiti"
+        ) as mock_client_class, patch("asyncio.sleep") as mock_sleep:
+            mock_client_class.return_value = mock_client
+            repository = GraphitiEpisodeRepository(
+                neo4j_uri="bolt://localhost:7687",
+                neo4j_user="neo4j",
+                neo4j_password="password",
+                llm_api_key="sk-1234",
+                llm_base_url="http://localhost:4000/v1",
+                llm_model="claude-sonnet-4",
+                rerank_model="gpt-4.1-nano",
+                embedding_api_key="dummy",
+                embedding_base_url="http://localhost:11434/v1",
+                embedding_model="ruri-v3-310m",
+                rate_limit_max_retries=3,
+                rate_limit_default_wait_time=121,
+            )
+
+            with pytest.raises(IndexError, match="other index error"):
+                await repository.save(episode)
+
+        # リトライなしで1回のみ呼ばれる
+        assert mock_client.add_episode.call_count == 1
+        mock_sleep.assert_not_called()
