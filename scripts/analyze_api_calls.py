@@ -430,6 +430,46 @@ def print_statistics(analysis_result):
             print(f"  🛡️ Rate Limitリトライによる回復: {rate_limit_count}回")
 
 
+def print_failed_files(log_file_path):
+    """失敗ファイルの詳細を表示"""
+    import subprocess
+    
+    try:
+        # grep -c で失敗ファイル数を確認
+        count_result = subprocess.run(
+            ["grep", "-c", "❌ ファイル処理失敗:", log_file_path],
+            capture_output=True,
+            text=True
+        )
+        
+        if count_result.returncode == 0 and int(count_result.stdout.strip()) > 0:
+            print("\n📄 失敗ファイル詳細:")
+            # grep で失敗ファイルの詳細を取得
+            detail_result = subprocess.run(
+                ["grep", "❌ ファイル処理失敗:", log_file_path],
+                capture_output=True,
+                text=True
+            )
+            
+            if detail_result.returncode == 0:
+                for i, line in enumerate(detail_result.stdout.strip().split('\n'), 1):
+                    # ログ行から情報を抽出
+                    # 例: 02:42:28 [T184][tag_model] - src.usecase.register_document_usecase - ERROR - ❌ ファイル処理失敗: /data/input/.../file.png - error message
+                    if "❌ ファイル処理失敗:" in line:
+                        # ファイルパスとエラーメッセージを抽出
+                        parts = line.split("❌ ファイル処理失敗:")
+                        if len(parts) > 1:
+                            file_and_error = parts[1].strip()
+                            if " - " in file_and_error:
+                                file_path, error_msg = file_and_error.split(" - ", 1)
+                                file_name = file_path.strip().split("/")[-1]  # ファイル名のみ
+                                print(f"  {i}. {file_name}")
+                                print(f"     パス: {file_path.strip()}")
+                                print(f"     エラー: {error_msg.strip()}")
+    except Exception as e:
+        print(f"失敗ファイル詳細の取得中にエラー: {e}")
+
+
 def main():
     """メイン関数"""
     if len(sys.argv) != 2:
@@ -443,6 +483,9 @@ def main():
 
     analysis_result = analyze_log_file(log_file_path)
     print_statistics(analysis_result)
+    
+    # 失敗ファイルの詳細を表示
+    print_failed_files(log_file_path)
 
 
 if __name__ == "__main__":
