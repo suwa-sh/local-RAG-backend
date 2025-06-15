@@ -36,21 +36,26 @@ def analyze_log_file(log_file_path):
             for line_num, line in enumerate(f, 1):
                 # 時刻を抽出
                 time_match = re.match(r"^(\d{2}:\d{2}:\d{2})", line)
-                if not time_match:
-                    continue
+                
+                # 時刻あり行の処理
+                if time_match:
+                    time_str = time_match.group(1)
+                    time_obj = parse_time(time_str)
+                    if not time_obj:
+                        continue
 
-                time_str = time_match.group(1)
-                time_obj = parse_time(time_str)
-                if not time_obj:
-                    continue
+                    # スレッドIDとファイル名を抽出 [T123][filename]
+                    thread_match = re.search(r"\[T(\d+)\]\[([^\]]+)\]", line)
+                    thread_id = thread_match.group(1) if thread_match else "unknown"
+                    file_name = thread_match.group(2) if thread_match else "unknown"
+                else:
+                    # 時刻なし行でも処理サマリーは解析
+                    time_obj = None
+                    thread_id = "main"
+                    file_name = "main"
 
-                # スレッドIDとファイル名を抽出 [T123][filename]
-                thread_match = re.search(r"\[T(\d+)\]\[([^\]]+)\]", line)
-                thread_id = thread_match.group(1) if thread_match else "unknown"
-                file_name = thread_match.group(2) if thread_match else "unknown"
-
-                # LLM リクエスト開始
-                if "Sending HTTP Request: POST" in line and "chat/completions" in line:
+                # LLM リクエスト開始（時刻がある場合のみ）
+                if time_obj and "Sending HTTP Request: POST" in line and "chat/completions" in line:
                     key = f"{thread_id}_{file_name}"
                     pending_llm[key] = {
                         "start_time": time_obj,
@@ -59,8 +64,8 @@ def analyze_log_file(log_file_path):
                         "file_name": file_name,
                     }
 
-                # LLM レスポンス
-                elif "HTTP Response: POST" in line and "chat/completions" in line:
+                # LLM レスポンス（時刻がある場合のみ）
+                elif time_obj and "HTTP Response: POST" in line and "chat/completions" in line:
                     key = f"{thread_id}_{file_name}"
                     if key in pending_llm:
                         start_info = pending_llm.pop(key)
@@ -77,8 +82,8 @@ def analyze_log_file(log_file_path):
                             }
                         )
 
-                # Embedding リクエスト開始
-                elif "Sending HTTP Request: POST" in line and "embeddings" in line:
+                # Embedding リクエスト開始（時刻がある場合のみ）
+                elif time_obj and "Sending HTTP Request: POST" in line and "embeddings" in line:
                     key = f"{thread_id}_{file_name}_{time_obj.timestamp()}"  # 同時並行のため時刻も含める
                     pending_embedding[key] = {
                         "start_time": time_obj,
@@ -87,8 +92,8 @@ def analyze_log_file(log_file_path):
                         "file_name": file_name,
                     }
 
-                # Embedding レスポンス
-                elif "HTTP Response: POST" in line and "embeddings" in line:
+                # Embedding レスポンス（時刻がある場合のみ）
+                elif time_obj and "HTTP Response: POST" in line and "embeddings" in line:
                     # 最も近い開始時刻のリクエストとマッチング
                     matching_key = None
                     min_diff = float("inf")
@@ -120,8 +125,8 @@ def analyze_log_file(log_file_path):
                             }
                         )
 
-                # Rate limitリトライの検出
-                elif "🔄 Rate limit detected" in line:
+                # Rate limitリトライの検出（時刻がある場合のみ）
+                elif time_obj and "🔄 Rate limit detected" in line:
                     # 例: 🔄 Rate limit detected. Waiting 61 seconds before retry (rate limit attempt 1/3)
                     wait_match = re.search(r"Waiting (\d+) seconds", line)
                     attempt_match = re.search(r"attempt (\d+)/(\d+)", line)
@@ -140,8 +145,8 @@ def analyze_log_file(log_file_path):
                         "line_num": line_num
                     })
 
-                # IndexErrorリトライの検出
-                elif "⚠️ Graphitiエンティティ競合エラー" in line:
+                # IndexErrorリトライの検出（時刻がある場合のみ）
+                elif time_obj and "⚠️ Graphitiエンティティ競合エラー" in line:
                     # 例: ⚠️ Graphitiエンティティ競合エラー。1秒後にリトライ (index error attempt 1/3)
                     wait_match = re.search(r"(\d+)秒後にリトライ", line)
                     attempt_match = re.search(r"attempt (\d+)/(\d+)", line)
@@ -180,6 +185,24 @@ def analyze_log_file(log_file_path):
                     failed_count_match = re.search(r"処理失敗ファイル数: (\d+)", line)
                     if failed_count_match:
                         processing_summary["failed_files"] = int(failed_count_match.group(1))
+
+                # 失敗ファイルの詳細を収集（時刻がある場合のみ）
+                elif time_obj and "❌ ファイル処理失敗:" in line:
+                    # 例: ❌ ファイル処理失敗: /data/input/SRv6-IaaS/ADR/images/tag_model.png - libGL.so.1: cannot open shared object file
+                    file_match = re.search(r"❌ ファイル処理失敗: ([^-]+) - (.+)", line)
+                    if file_match:
+                        file_path = file_match.group(1).strip()
+                        error_message = file_match.group(2).strip()
+                        
+                        if "failed_file_details" not in processing_summary:
+                            processing_summary["failed_file_details"] = []
+                        
+                        processing_summary["failed_file_details"].append({
+                            "file_path": file_path,
+                            "error_message": error_message,
+                            "time": time_obj,
+                            "line_num": line_num
+                        })
 
     except FileNotFoundError:
         print(f"エラー: ファイルが見つかりません: {log_file_path}")
@@ -366,6 +389,15 @@ def print_statistics(analysis_result):
         if "failed_files" in processing_summary:
             print(f"  ❌ 処理失敗ファイル数: {processing_summary['failed_files']}件")
             
+            # 失敗ファイルの詳細表示
+            if "failed_file_details" in processing_summary:
+                print("\n    📄 失敗ファイル詳細:")
+                for i, failure in enumerate(processing_summary["failed_file_details"], 1):
+                    file_name = failure["file_path"].split("/")[-1]  # ファイル名のみ抽出
+                    print(f"      {i}. {file_name}")
+                    print(f"         パス: {failure['file_path']}")
+                    print(f"         エラー: {failure['error_message']}")
+            
             # 成功率計算
             if "total_files" in processing_summary:
                 total = processing_summary["total_files"]
@@ -396,7 +428,6 @@ def print_statistics(analysis_result):
         rate_limit_count = len([r for r in retry_events if r["type"] == "rate_limit"])
         if rate_limit_count > 0:
             print(f"  🛡️ Rate Limitリトライによる回復: {rate_limit_count}回")
-            print(f"  💪 リトライ機能の有効性: すべてのRate Limitエラーが回復")
 
 
 def main():
@@ -409,7 +440,6 @@ def main():
     log_file_path = sys.argv[1]
 
     print(f"📊 ログファイル分析中: {log_file_path}")
-    print("これには少し時間がかかる場合があります...")
 
     analysis_result = analyze_log_file(log_file_path)
     print_statistics(analysis_result)
