@@ -7,6 +7,7 @@ authors = [
 ]
 dependencies = [
     "unstructured[all-docs]>=0.17.2",
+    "numpy<2.0", # numpy 2.0 is not compatible with unstructured
     "graphiti-core>=0.12.0",
     "python-dotenv>=1.1.0",
     "mcp>=1.5.0",
