@@ -212,8 +212,8 @@ class TestFileSystemDocumentReader:
         # ------------------------------
         # 実行 (Act) & 検証 (Assert)
         # ------------------------------
-        with patch("src.adapter.filesystem_document_reader.Path.exists") as mock_exists:
-            mock_exists.return_value = True
+        with patch("src.domain.document.Document.from_file") as mock_from_file:
+            mock_from_file.side_effect = ValueError("サポートされていないfile_typeです")
 
             with pytest.raises(ValueError, match="サポートされていないfile_typeです"):
                 reader.read_document(file_path)
@@ -234,6 +234,7 @@ class TestFileSystemDocumentReader:
                 "txt",
                 "Content 1",
                 datetime(2025, 6, 13, 10, 0, 0),
+                relative_path="file1.txt",
             ),
             Document(
                 "/docs/file2.pdf",
@@ -241,6 +242,7 @@ class TestFileSystemDocumentReader:
                 "pdf",
                 "<バイナリファイル: file2.pdf>",
                 datetime(2025, 6, 13, 11, 0, 0),
+                relative_path="file2.pdf",
             ),
             Document(
                 "/docs/file3.md",
@@ -248,6 +250,7 @@ class TestFileSystemDocumentReader:
                 "md",
                 "# Content 3",
                 datetime(2025, 6, 13, 12, 0, 0),
+                relative_path="file3.md",
             ),
         ]
 

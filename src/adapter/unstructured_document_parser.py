@@ -111,7 +111,7 @@ class UnstructuredDocumentParser:
         Returns:
             Chunk: 作成されたChunkインスタンス
         """
-        chunk_id = f"{source_document.file_name}_chunk_{index}"
+        chunk_id = f"{source_document.relative_path}_chunk_{index}"
         chunk_metadata = {
             "original_chunk_id": f"chunk_{index}",
             "position": index,

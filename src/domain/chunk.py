@@ -73,9 +73,9 @@ class Chunk:
         """
         from .episode import Episode
 
-        name = f"{self._source_document.file_name} - {self._id}"
+        name = f"{self._source_document.relative_path} - chunk_{self._metadata.get('position', 0)}"
         body = self._text
-        source_description = f"Source file: {self._source_document.file_name}"
+        source_description = f"Source file: {self._source_document.relative_path}"
         reference_time = self._source_document.file_last_modified
         episode_type = "text"
 

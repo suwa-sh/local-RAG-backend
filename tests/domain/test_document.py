@@ -27,6 +27,7 @@ class TestDocument:
             file_type=file_type,
             content=content,
             file_last_modified=file_last_modified,
+            relative_path=file_name,
         )
 
         # ------------------------------
@@ -57,6 +58,7 @@ class TestDocument:
                 file_type=file_type,
                 content=content,
                 file_last_modified=datetime.now(),
+                relative_path=file_name,
             )
 
     def test_Document作成_file_nameが空文字の場合_例外が発生すること(self):
@@ -78,6 +80,7 @@ class TestDocument:
                 file_type=file_type,
                 content=content,
                 file_last_modified=datetime.now(),
+                relative_path=file_name,
             )
 
     def test_Document作成_contentが空文字の場合_例外が発生すること(self):
@@ -99,6 +102,7 @@ class TestDocument:
                 file_type=file_type,
                 content=content,
                 file_last_modified=datetime.now(),
+                relative_path=file_name,
             )
 
     def test_Document作成_file_typeがサポートされていない場合_例外が発生すること(self):
@@ -120,6 +124,7 @@ class TestDocument:
                 file_type=file_type,
                 content=content,
                 file_last_modified=datetime.now(),
+                relative_path=file_name,
             )
 
     def test_Document等価性_同じ値のインスタンス同士_等しいこと(self):
@@ -138,6 +143,7 @@ class TestDocument:
             file_type=file_type,
             content=content,
             file_last_modified=file_last_modified,
+            relative_path=file_name,
         )
 
         document2 = Document(
@@ -146,6 +152,7 @@ class TestDocument:
             file_type=file_type,
             content=content,
             file_last_modified=file_last_modified,
+            relative_path=file_name,
         )
 
         # ------------------------------
@@ -163,6 +170,7 @@ class TestDocument:
             file_type="txt",
             content="content1",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="file1.txt",
         )
 
         document2 = Document(
@@ -171,6 +179,7 @@ class TestDocument:
             file_type="txt",
             content="content2",
             file_last_modified=datetime(2025, 6, 13, 11, 0, 0),
+            relative_path="file2.txt",
         )
 
         # ------------------------------
@@ -223,6 +232,91 @@ class TestDocument:
                 file_type=file_type,
                 content=f"Sample {description} content",
                 file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+                relative_path=f"sample.{file_type}",
             )
             assert document.file_type == file_type
             assert document.file_name == f"sample.{file_type}"
+
+    def test_Document_relative_path_プロパティ_正常に設定され取得できること(self):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        file_path = "/project/docs/subdir/readme.txt"
+        file_name = "readme.txt"
+        relative_path = "docs/subdir/readme.txt"
+
+        # ------------------------------
+        # 実行 (Act)
+        # ------------------------------
+        document = Document(
+            file_path=file_path,
+            file_name=file_name,
+            file_type="txt",
+            content="content",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path=relative_path,
+        )
+
+        # ------------------------------
+        # 検証 (Assert)
+        # ------------------------------
+        assert document.relative_path == relative_path
+
+    def test_Document_from_file_base_directoryあり_相対パスが計算されること(self):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # サブディレクトリを作成
+            sub_dir = os.path.join(temp_dir, "subdir")
+            os.makedirs(sub_dir)
+
+            # テストファイルを作成
+            test_file = os.path.join(sub_dir, "test.txt")
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write("test content")
+
+            # ------------------------------
+            # 実行 (Act)
+            # ------------------------------
+            document = Document.from_file(test_file, temp_dir)
+
+            # ------------------------------
+            # 検証 (Assert)
+            # ------------------------------
+            expected_relative_path = os.path.join("subdir", "test.txt")
+            # Windowsのパス区切りも考慮して正規化
+            expected_relative_path = expected_relative_path.replace("\\", "/")
+            actual_relative_path = document.relative_path.replace("\\", "/")
+
+            assert actual_relative_path == expected_relative_path
+            assert document.file_name == "test.txt"
+            assert document.content == "test content"
+
+    def test_Document_from_file_base_directoryなし_ファイル名が相対パスになること(self):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # テストファイルを作成
+            test_file = os.path.join(temp_dir, "test.txt")
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write("test content")
+
+            # ------------------------------
+            # 実行 (Act)
+            # ------------------------------
+            document = Document.from_file(test_file)
+
+            # ------------------------------
+            # 検証 (Assert)
+            # ------------------------------
+            assert document.relative_path == "test.txt"
+            assert document.file_name == "test.txt"
+            assert document.content == "test content"

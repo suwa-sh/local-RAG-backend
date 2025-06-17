@@ -23,6 +23,7 @@ class TestChunk:
             file_type="pdf",
             content="This is sample content...",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="sample.pdf",
         )
 
         # ------------------------------
@@ -56,6 +57,7 @@ class TestChunk:
             file_type="txt",
             content="content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="test.txt",
         )
 
         # ------------------------------
@@ -82,6 +84,7 @@ class TestChunk:
             file_type="txt",
             content="content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="test.txt",
         )
 
         # ------------------------------
@@ -108,6 +111,7 @@ class TestChunk:
             file_type="txt",
             content="test content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="test.txt",
         )
 
         chunk1 = Chunk(
@@ -139,6 +143,7 @@ class TestChunk:
             file_type="txt",
             content="test content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="test.txt",
         )
 
         chunk1 = Chunk(
@@ -174,6 +179,7 @@ class TestChunk:
             file_type="pdf",
             content="original content",
             file_last_modified=file_last_modified,
+            relative_path="sample.pdf",
         )
         group_id = GroupId("default")
 
@@ -192,9 +198,12 @@ class TestChunk:
         # ------------------------------
         # 検証 (Assert)
         # ------------------------------
-        assert episode.name == f"{source_document.file_name} - {chunk_id}"
+        assert episode.name == f"{source_document.relative_path} - chunk_0"
         assert episode.body == text
-        assert episode.source_description == f"Source file: {source_document.file_name}"
+        assert (
+            episode.source_description
+            == f"Source file: {source_document.relative_path}"
+        )
         assert episode.episode_type == "text"
         assert episode.group_id == group_id
         # reference_timeはファイルの更新日時と同じであることを確認
@@ -213,6 +222,7 @@ class TestChunk:
             file_type="txt",
             content="hash test content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="hash_test.txt",
         )
 
         chunk1 = Chunk(

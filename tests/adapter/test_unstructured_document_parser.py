@@ -99,6 +99,7 @@ class TestUnstructuredDocumentParser:
             file_type="txt",
             content="test content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="test.txt",
         )
 
         mock_elements = [
@@ -147,6 +148,7 @@ class TestUnstructuredDocumentParser:
             file_type="txt",
             content="long content",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="long.txt",
         )
 
         # 長いテキストのElement（モック）
@@ -187,6 +189,7 @@ class TestUnstructuredDocumentParser:
             file_type="txt",
             content="empty",
             file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="empty.txt",
         )
         mock_elements = []
 
@@ -199,3 +202,73 @@ class TestUnstructuredDocumentParser:
         # 検証 (Assert)
         # ------------------------------
         assert len(chunks) == 0
+
+    def test_split_elements_異なるディレクトリの同名ファイル_ChunkIDが重複しないこと(
+        self,
+    ):
+        # ------------------------------
+        # 準備 (Arrange)
+        # ------------------------------
+        parser = UnstructuredDocumentParser()
+
+        # 異なるディレクトリの同名ファイルを模擬
+        document1 = Document(
+            file_path="/project/dir1/readme.txt",
+            file_name="readme.txt",
+            file_type="txt",
+            content="content 1",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="dir1/readme.txt",
+        )
+
+        document2 = Document(
+            file_path="/project/dir2/readme.txt",
+            file_name="readme.txt",
+            file_type="txt",
+            content="content 2",
+            file_last_modified=datetime(2025, 6, 13, 10, 0, 0),
+            relative_path="dir2/readme.txt",
+        )
+
+        # モックElements
+        from unstructured.documents.elements import Text
+
+        # 実際のUnstructured Elementを使用
+        mock_element1 = Text(text="This is content from dir1")
+        mock_element2 = Text(text="This is content from dir2")
+
+        # ------------------------------
+        # 実行 (Act)
+        # ------------------------------
+        chunks1 = parser.split_elements([mock_element1], document1)
+        chunks2 = parser.split_elements([mock_element2], document2)
+
+        # ------------------------------
+        # 検証 (Assert)
+        # ------------------------------
+        assert len(chunks1) == 1
+        assert len(chunks2) == 1
+
+        chunk1 = chunks1[0]
+        chunk2 = chunks2[0]
+
+        # Chunk IDが異なることを確認
+        assert chunk1.id == "dir1/readme.txt_chunk_0"
+        assert chunk2.id == "dir2/readme.txt_chunk_0"
+        assert chunk1.id != chunk2.id
+
+        # エピソード名も異なることを確認
+        from src.domain.group_id import GroupId
+
+        group_id = GroupId("test")
+
+        episode1 = chunk1.to_episode(group_id)
+        episode2 = chunk2.to_episode(group_id)
+
+        assert episode1.name == "dir1/readme.txt - chunk_0"
+        assert episode2.name == "dir2/readme.txt - chunk_0"
+        assert episode1.name != episode2.name
+
+        assert episode1.source_description == "Source file: dir1/readme.txt"
+        assert episode2.source_description == "Source file: dir2/readme.txt"
+        assert episode1.source_description != episode2.source_description

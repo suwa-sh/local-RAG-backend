@@ -108,8 +108,8 @@ class RegisterDocumentUseCase:
         file_paths = self._file_reader.list_supported_files(directory)
         self._logger.info(f"📄 対象ファイル数: {len(file_paths)}")
 
-        # 2. ファイルを読み込み
-        documents = self._file_reader.read_documents(file_paths)
+        # 2. ファイルを読み込み（基準ディレクトリを指定して相対パス計算）
+        documents = self._file_reader.read_documents(file_paths, directory)
 
         self._logger.info(f"📖 読み込み完了ファイル数: {len(documents)}")
 

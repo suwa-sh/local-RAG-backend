@@ -47,6 +47,7 @@ class Document:
         file_type: str,
         content: str,
         file_last_modified: datetime,
+        relative_path: str | None = None,
     ) -> None:
         """
         Documentを作成する
@@ -57,6 +58,7 @@ class Document:
             file_type: ファイルタイプ（拡張子）
             content: ファイル内容
             file_last_modified: ファイルの最終更新日時
+            relative_path: 基準ディレクトリからの相対パス（Noneの場合はfile_nameを使用）
 
         Raises:
             ValueError: file_path、file_name、contentが空文字列の場合、
@@ -76,6 +78,7 @@ class Document:
         self._file_type = file_type
         self._content = content
         self._file_last_modified = file_last_modified
+        self._relative_path = relative_path or file_name
 
     @property
     def file_path(self) -> str:
@@ -102,13 +105,19 @@ class Document:
         """ファイルの最終更新日時を取得する"""
         return self._file_last_modified
 
+    @property
+    def relative_path(self) -> str:
+        """基準ディレクトリからの相対パスを取得する"""
+        return self._relative_path
+
     @classmethod
-    def from_file(cls, file_path: str) -> "Document":
+    def from_file(cls, file_path: str, base_directory: str | None = None) -> "Document":
         """
         ファイルパスからDocumentを作成する
 
         Args:
             file_path: 読み込むファイルのパス
+            base_directory: 相対パス計算の基準ディレクトリ（Noneの場合はファイル名のみ使用）
 
         Returns:
             Document: 作成されたDocumentインスタンス
@@ -135,12 +144,25 @@ class Document:
         # ファイルの最終更新日時を取得
         file_last_modified = datetime.fromtimestamp(path.stat().st_mtime)
 
+        # 相対パスを計算
+        if base_directory:
+            base_path = Path(base_directory).resolve()
+            absolute_path = path.resolve()
+            try:
+                relative_path = str(absolute_path.relative_to(base_path))
+            except ValueError:
+                # base_directoryの外部にある場合はファイル名のみ使用
+                relative_path = file_name
+        else:
+            relative_path = file_name
+
         return cls(
             file_path=str(path.absolute()),
             file_name=file_name,
             file_type=file_type,
             content=content,
             file_last_modified=file_last_modified,
+            relative_path=relative_path,
         )
 
     def __eq__(self, other: object) -> bool:
@@ -153,6 +175,7 @@ class Document:
             and self._file_type == other._file_type
             and self._content == other._content
             and self._file_last_modified == other._file_last_modified
+            and self._relative_path == other._relative_path
         )
 
     def __hash__(self) -> int:
@@ -164,6 +187,7 @@ class Document:
                 self._file_type,
                 self._content,
                 self._file_last_modified,
+                self._relative_path,
             )
         )
 
