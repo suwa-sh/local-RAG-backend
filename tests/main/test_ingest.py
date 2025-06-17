@@ -47,7 +47,7 @@ class TestIngest:
         # 準備 (Arrange)
         # ------------------------------
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
@@ -85,7 +85,7 @@ class TestIngest:
         test_args = ["ingest.py", "/docs/test"]
 
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
@@ -182,7 +182,7 @@ class TestIngest:
         test_args = ["ingest.py", "/docs/test"]
 
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
@@ -229,7 +229,7 @@ class TestIngest:
         test_args = ["ingest.py", "/empty"]
 
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",

@@ -32,29 +32,11 @@ from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 
 load_dotenv()
 
-# ingest.pyと同じ方式で環境変数をマッピング
-# GraphitiライブラリがOPENAI_API_KEYを要求するため、LLM_MODEL_KEYと同じ値を設定
-llm_model_key = os.getenv("LLM_MODEL_KEY", "")
-if llm_model_key and not os.getenv("OPENAI_API_KEY"):
-    os.environ["OPENAI_API_KEY"] = llm_model_key
-
 # 環境変数名の統一（local-RAG-backend仕様からMCP Server仕様へ）
-# NEO4J_URL -> NEO4J_URI
-if os.getenv("NEO4J_URL") and not os.getenv("NEO4J_URI"):
-    os.environ["NEO4J_URI"] = os.getenv("NEO4J_URL", "")
-
-# その他の環境変数マッピングも必要に応じて追加
-# MODEL_NAME <- LLM_MODEL_NAME
-if os.getenv("LLM_MODEL_NAME") and not os.getenv("MODEL_NAME"):
-    os.environ["MODEL_NAME"] = os.getenv("LLM_MODEL_NAME", "")
-
-# SMALL_MODEL_NAME <- RERANK_MODEL_NAME
-if os.getenv("RERANK_MODEL_NAME") and not os.getenv("SMALL_MODEL_NAME"):
-    os.environ["SMALL_MODEL_NAME"] = os.getenv("RERANK_MODEL_NAME", "")
-
-# EMBEDDER_MODEL_NAME <- EMBEDDING_MODEL_NAME
-if os.getenv("EMBEDDING_MODEL_NAME") and not os.getenv("EMBEDDER_MODEL_NAME"):
-    os.environ["EMBEDDER_MODEL_NAME"] = os.getenv("EMBEDDING_MODEL_NAME", "")
+os.environ["OPENAI_API_KEY"] = os.getenv("LLM_MODEL_KEY")
+os.environ["MODEL_NAME"] = os.getenv("LLM_MODEL_NAME")
+os.environ["SMALL_MODEL_NAME"] = os.getenv("RERANK_MODEL_NAME")
+os.environ["EMBEDDER_MODEL_NAME"] = os.getenv("EMBEDDING_MODEL_NAME")
 
 DEFAULT_LLM_MODEL = "gpt-4.1-mini"
 SMALL_LLM_MODEL = "gpt-4.1-nano"
@@ -179,6 +161,7 @@ class StatusResponse(TypedDict):
     status: str
     message: str
 
+
 # Server configuration classes
 # The configuration system has a hierarchy:
 # - GraphitiConfig is the top-level configuration
@@ -211,27 +194,22 @@ class GraphitiLLMConfig(BaseModel):
         """Create LLM configuration from environment variables."""
         # Get model from environment, or use default if not set or empty
         # local-RAG-backend統合: LLM_MODEL_NAMEも参照
-        model_env = os.environ.get("MODEL_NAME", "") or os.environ.get(
-            "LLM_MODEL_NAME", ""
-        )
+        model_env = os.environ.get("MODEL_NAME") or os.environ.get("LLM_MODEL_NAME")
         model = model_env if model_env.strip() else DEFAULT_LLM_MODEL
 
         # Get small_model from environment, or use default if not set or empty
         # local-RAG-backend統合: RERANK_MODEL_NAMEも参照
-        small_model_env = os.environ.get("SMALL_MODEL_NAME", "") or os.environ.get(
-            "RERANK_MODEL_NAME", ""
+        small_model_env = os.environ.get("SMALL_MODEL_NAME") or os.environ.get(
+            "RERANK_MODEL_NAME"
         )
         small_model = small_model_env if small_model_env.strip() else SMALL_LLM_MODEL
 
-        azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", None)
-        azure_openai_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", None)
-        azure_openai_deployment_name = os.environ.get(
-            "AZURE_OPENAI_DEPLOYMENT_NAME", None
-        )
+        azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        azure_openai_api_version = os.environ.get("AZURE_OPENAI_API_VERSION")
+        azure_openai_deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
         azure_openai_use_managed_identity = (
-            os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY", "false").lower()
-            == "true"
-        )
+            os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY") or "false"
+        ).lower() == "true"
 
         if azure_openai_endpoint is None:
             # Setup for OpenAI API
@@ -251,7 +229,7 @@ class GraphitiLLMConfig(BaseModel):
                 base_url=os.environ.get("LLM_MODEL_URL"),  # local-RAG-backend統合
                 model=model,
                 small_model=small_model,
-                temperature=float(os.environ.get("LLM_TEMPERATURE", "0.0")),
+                temperature=float(os.environ.get("LLM_TEMPERATURE") or "0.0"),
             )
         else:
             # Setup for Azure OpenAI API
@@ -280,7 +258,7 @@ class GraphitiLLMConfig(BaseModel):
                 azure_openai_deployment_name=azure_openai_deployment_name,
                 model=model,
                 small_model=small_model,
-                temperature=float(os.environ.get("LLM_TEMPERATURE", "0.0")),
+                temperature=float(os.environ.get("LLM_TEMPERATURE") or "0.0"),
             )
 
     @classmethod
@@ -362,27 +340,21 @@ class GraphitiEmbedderConfig(BaseModel):
 
         # Get model from environment, or use default if not set or empty
         # local-RAG-backend統合: EMBEDDING_MODEL_NAMEも参照
-        model_env = os.environ.get("EMBEDDER_MODEL_NAME", "") or os.environ.get(
-            "EMBEDDING_MODEL_NAME", ""
+        model_env = os.environ.get("EMBEDDER_MODEL_NAME") or os.environ.get(
+            "EMBEDDING_MODEL_NAME"
         )
         model = model_env if model_env.strip() else DEFAULT_EMBEDDER_MODEL
 
-        azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", None)
-        azure_openai_api_version = os.environ.get(
-            "AZURE_OPENAI_EMBEDDING_API_VERSION", None
-        )
-        azure_openai_deployment_name = os.environ.get(
-            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", None
-        )
+        azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        azure_openai_api_version = os.environ.get("AZURE_OPENAI_EMBEDDING_API_VERSION")
         azure_openai_use_managed_identity = (
-            os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY", "false").lower()
-            == "true"
-        )
+            os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY") or "false"
+        ).lower() == "true"
         if azure_openai_endpoint is not None:
             # Setup for Azure OpenAI API
             # Log if empty deployment name was provided
             azure_openai_deployment_name = os.environ.get(
-                "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", None
+                "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
             )
             if azure_openai_deployment_name is None:
                 logger.error(
@@ -430,9 +402,7 @@ class GraphitiEmbedderConfig(BaseModel):
             # base_urlが指定されている場合は、カスタムOpenAIクライアントを作成
             from openai import AsyncOpenAI
 
-            custom_client = AsyncOpenAI(
-                api_key=self.api_key, base_url=self.base_url
-            )
+            custom_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
             return OpenAIEmbedder(config=embedder_config, client=custom_client)
         else:
             # デフォルト（OpenAI公式API）の場合
@@ -450,9 +420,9 @@ class Neo4jConfig(BaseModel):
     def from_env(cls) -> "Neo4jConfig":
         """Create Neo4j configuration from environment variables."""
         return cls(
-            uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
-            user=os.environ.get("NEO4J_USER", "neo4j"),
-            password=os.environ.get("NEO4J_PASSWORD", "password"),
+            uri=os.environ.get("NEO4J_URI"),
+            user=os.environ.get("NEO4J_USER"),
+            password=os.environ.get("NEO4J_PASSWORD"),
         )
 
 

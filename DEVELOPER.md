@@ -209,7 +209,7 @@ EMBEDDING_MODEL_KEY=dummy
 EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
 
 # Neo4j設定（共通データベース）
-NEO4J_URL=bolt://neo4j:7687
+NEO4J_URI=bolt://neo4j:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 
@@ -681,7 +681,9 @@ docker compose down -f docker-compose.dev.yml
 #### A. 短期改善項目
 
 - **ナレッジ検索の可視化**
+
   - 検索の内部でなにが起きているかがわかりにくい
+
     - graphitiのログには出力されている
     - カスタムログハンドラー経由でlangfuse連携して内部の挙動をモニタリング
     - イメージ

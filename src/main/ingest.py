@@ -55,7 +55,7 @@ def create_usecase() -> RegisterDocumentUseCase:
 
     # リポジトリの初期化
     episode_repository = GraphitiEpisodeRepository(
-        neo4j_uri=config.neo4j.url,
+        neo4j_uri=config.neo4j.uri,
         neo4j_user=config.neo4j.user,
         neo4j_password=config.neo4j.password,
         llm_api_key=config.llm.key,

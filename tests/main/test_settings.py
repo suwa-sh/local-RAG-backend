@@ -17,7 +17,7 @@ class TestSettings:
         # 準備 (Arrange)
         # ------------------------------
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
@@ -46,7 +46,7 @@ class TestSettings:
         assert isinstance(config, AppConfig)
 
         # Neo4j設定
-        assert config.neo4j.url == "bolt://localhost:7687"
+        assert config.neo4j.uri == "bolt://localhost:7687"
         assert config.neo4j.user == "neo4j"
         assert config.neo4j.password == "password"
 
@@ -78,7 +78,7 @@ class TestSettings:
         # 準備 (Arrange)
         # ------------------------------
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
@@ -112,7 +112,7 @@ class TestSettings:
         # ------------------------------
         # 準備 (Arrange)
         # ------------------------------
-        # NEO4J_URLを省略
+        # NEO4J_URIを省略
         env_vars = {
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
@@ -144,7 +144,7 @@ class TestSettings:
             "LLM_MODEL_URL": "http://localhost:4000/v1",
             "EMBEDDING_MODEL_URL": "http://localhost:11434/v1",
             "GROUP_ID": "test-group",
-            # NEO4J_URL, NEO4J_PASSWORD, LLM_MODEL_NAME, LLM_MODEL_KEY,
+            # NEO4J_URI, NEO4J_PASSWORD, LLM_MODEL_NAME, LLM_MODEL_KEY,
             # EMBEDDING_MODEL_NAME, EMBEDDING_MODEL_KEY を省略
         }
 
@@ -156,7 +156,7 @@ class TestSettings:
                 load_config()
 
             error_message = str(exc_info.value)
-            assert "NEO4J_URL" in error_message
+            assert "NEO4J_URI" in error_message
             assert "NEO4J_PASSWORD" in error_message
             assert "LLM_MODEL_NAME" in error_message
             assert "LLM_MODEL_KEY" in error_message
@@ -170,7 +170,7 @@ class TestSettings:
         # 準備 (Arrange)
         # ------------------------------
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",
@@ -204,7 +204,7 @@ class TestSettings:
         # 準備 (Arrange)
         # ------------------------------
         env_vars = {
-            "NEO4J_URL": "bolt://localhost:7687",
+            "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
             "NEO4J_PASSWORD": "password",
             "LLM_MODEL_URL": "http://localhost:4000/v1",

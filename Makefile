@@ -251,7 +251,7 @@ neo4j-browser: ## Neo4jブラウザURLを開く（macOS）
 show-env: ## 現在の環境変数設定を表示
 	@echo "🔧 環境変数設定:"
 	@echo "GROUP_ID=${GROUP_ID}"
-	@echo "NEO4J_URL=${NEO4J_URL}"
+	@echo "NEO4J_URI=${NEO4J_URI}"
 	@echo "LLM_MODEL_URL=${LLM_MODEL_URL}"
 	@echo "EMBEDDING_MODEL_URL=${EMBEDDING_MODEL_URL}"
 	@if [ -f .env ]; then \

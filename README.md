@@ -37,19 +37,20 @@ graph TB
 
 ### 1. 前提
 
-- OpenAPI互換のLLM APIが利用できる
-  - ベクトル検索に利用するEmbeddingモデル
-  - グラフ検索に利用するLLMモデル
-  - リランキングに利用する軽量なLLMモデル
-- EmbeddingモデルとLLMモデルは、別のURLを指定できます
-  - 例:
-    - Embeddingモデル: `ローカルのOllama`
-    - LMモデル: `OpenAI`
-      - グラフ検索: o4-mini
-      - リランキング: gpt-4.1-nano
-  - 注意:
-    - OpenRouterの場合、rate limitでエラーになることが多いです。
-    - LLMモデルをローカルのOllamaで利用する場合、フォーマット指定のレスポインスを、数秒で返すパフォーマンスが必要です。
+- **OpenAPI互換のLLM APIが利用できる**
+  - 利用するモデル
+    - ベクトル検索に利用するEmbeddingモデル
+    - グラフ検索に利用するLLMモデル
+    - リランキングに利用する軽量なLLMモデル
+  - EmbeddingモデルとLLMモデルは、別のURLを指定できます
+    - 例:
+      - Embeddingモデル: `ローカルのOllama`
+      - LMモデル: `OpenAI`
+        - グラフ検索: `o4-mini`
+        - リランキング: `gpt-4.1-nano`
+    - 注意:
+      - LLMモデルをローカルのOllamaで利用する場合、フォーマット指定のレスポインスを、数秒で返すパフォーマンスが必要です。
+      - OpenRouterは rate limit エラーになりやすいので、ルーティング先を直接指定することをおすすめします。
 
 ### 2. インストール
 
@@ -150,7 +151,7 @@ const addResult = await mcp.call_tool("add_memory", {
 
 ```ini
 # Neo4jデータベース
-NEO4J_URL=bolt://localhost:7687
+NEO4J_URI=bolt://localhost:7687 # docker composeでは不使用です。定義に合わせて上書きされます。
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 
@@ -163,7 +164,7 @@ LLM_MODEL_KEY=your_openai_api_key
 RERANK_MODEL_NAME=gpt-4.1-nano
 
 # Embeddingモデル
-EMBEDDING_MODEL_URL=http://localhost:11434/v1
+EMBEDDING_MODEL_URL=http://host.docker.internal:11434/v1
 EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
 EMBEDDING_MODEL_KEY=dummy
 

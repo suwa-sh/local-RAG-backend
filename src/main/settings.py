@@ -8,7 +8,7 @@ from dataclasses import dataclass
 class Neo4jConfig:
     """Neo4j設定"""
 
-    url: str
+    uri: str
     user: str
     password: str
 
@@ -74,7 +74,7 @@ def load_config() -> AppConfig:
     """
     # 必須環境変数のチェック
     required_vars = [
-        "NEO4J_URL",
+        "NEO4J_URI",
         "NEO4J_USER",
         "NEO4J_PASSWORD",
         "LLM_MODEL_URL",
@@ -97,30 +97,30 @@ def load_config() -> AppConfig:
         )
 
     # GraphitiライブラリがOPENAI_API_KEYを要求するため、LLM_MODEL_KEYと同じ値を設定
-    llm_model_key = os.getenv("LLM_MODEL_KEY", "")
+    llm_model_key = os.getenv("LLM_MODEL_KEY")
     if llm_model_key and not os.getenv("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = llm_model_key
 
     # Neo4j設定
     neo4j_config = Neo4jConfig(
-        url=os.getenv("NEO4J_URL", ""),
-        user=os.getenv("NEO4J_USER", ""),
-        password=os.getenv("NEO4J_PASSWORD", ""),
+        uri=os.getenv("NEO4J_URI"),
+        user=os.getenv("NEO4J_USER"),
+        password=os.getenv("NEO4J_PASSWORD"),
     )
 
     # LLM設定
     llm_config = LLMConfig(
-        url=os.getenv("LLM_MODEL_URL", ""),
-        name=os.getenv("LLM_MODEL_NAME", ""),
-        key=os.getenv("LLM_MODEL_KEY", ""),
-        rerank_model=os.getenv("RERANK_MODEL_NAME", os.getenv("LLM_MODEL_NAME", "")),
+        url=os.getenv("LLM_MODEL_URL"),
+        name=os.getenv("LLM_MODEL_NAME"),
+        key=os.getenv("LLM_MODEL_KEY"),
+        rerank_model=os.getenv("RERANK_MODEL_NAME", os.getenv("LLM_MODEL_NAME")),
     )
 
     # 埋め込み設定
     embedding_config = EmbeddingConfig(
-        url=os.getenv("EMBEDDING_MODEL_URL", ""),
-        name=os.getenv("EMBEDDING_MODEL_NAME", ""),
-        key=os.getenv("EMBEDDING_MODEL_KEY", ""),
+        url=os.getenv("EMBEDDING_MODEL_URL"),
+        name=os.getenv("EMBEDDING_MODEL_NAME"),
+        key=os.getenv("EMBEDDING_MODEL_KEY"),
     )
 
     # チャンク設定（オプション）
@@ -146,5 +146,5 @@ def load_config() -> AppConfig:
         embedding=embedding_config,
         chunk=chunk_config,
         rate_limit=rate_limit_config,
-        group_id=os.getenv("GROUP_ID", ""),
+        group_id=os.getenv("GROUP_ID"),
     )
