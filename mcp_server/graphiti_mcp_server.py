@@ -29,6 +29,7 @@ from graphiti_core.search.search_config_recipes import (
 )
 from graphiti_core.search.search_filters import SearchFilters
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
+from graphiti_core.search.search_helpers import search_results_to_context_string
 
 load_dotenv()
 
@@ -533,6 +534,20 @@ mcp = FastMCP(
 graphiti_client: Graphiti | None = None
 
 
+def get_effective_group_ids(group_ids: list[str] | None = None) -> list[str]:
+    """Get effective group IDs: provided group_ids, default group_id, or empty list.
+
+    Args:
+        group_ids: Optional list of group IDs provided by the user
+
+    Returns:
+        List of group IDs to use for the operation
+    """
+    if group_ids is not None:
+        return group_ids
+    return [config.group_id] if config.group_id else []
+
+
 async def initialize_graphiti():
     """Initialize the Graphiti client with the configured settings."""
     global graphiti_client, config
@@ -598,12 +613,13 @@ def format_fact_result(edge: EntityEdge) -> dict[str, Any]:
     Returns:
         A dictionary representation of the edge with serialized dates and excluded embeddings
     """
-    return edge.model_dump(
-        mode="json",
-        exclude={
-            "fact_embedding",
-        },
-    )
+    result = edge.model_dump(mode="json")
+
+    # attributes内の不要なベクトルデータを削除
+    if "attributes" in result:
+        result["attributes"].pop("fact_embedding", None)
+
+    return result
 
 
 # Dictionary to store queues for each group_id
@@ -818,13 +834,7 @@ async def search_memory_nodes(
 
     try:
         # Use the provided group_ids or fall back to the default from config if none provided
-        effective_group_ids = (
-            group_ids
-            if group_ids is not None
-            else [config.group_id]
-            if config.group_id
-            else []
-        )
+        effective_group_ids = get_effective_group_ids(group_ids)
 
         # Configure the search
         if center_node_uuid is not None:
@@ -879,6 +889,38 @@ async def search_memory_nodes(
 
 
 @mcp.tool()
+async def search_for_rag(
+    query: str,
+    group_ids: list[str] | None = None,
+) -> SuccessResponse | ErrorResponse:
+    """Searches graph memory for RAG.
+    Performs integrated searches for facts, entities, episodes, and communities.
+
+    Args:
+        query: The search query
+        group_ids: Optional list of group IDs to filter results
+    """
+    global graphiti_client
+
+    if graphiti_client is None:
+        return {"error": "Graphiti client not initialized"}
+
+    try:
+        effective_group_ids = get_effective_group_ids(group_ids)
+
+        search_results = await graphiti_client.search_(
+            group_ids=effective_group_ids,
+            query=query,
+        )
+        context_string = search_results_to_context_string(search_results)
+        return context_string
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error searching: {error_msg}")
+        return {"error": f"Error searching: {error_msg}"}
+
+
+@mcp.tool()
 async def search_memory_facts(
     query: str,
     group_ids: list[str] | None = None,
@@ -900,13 +942,7 @@ async def search_memory_facts(
 
     try:
         # Use the provided group_ids or fall back to the default from config if none provided
-        effective_group_ids = (
-            group_ids
-            if group_ids is not None
-            else [config.group_id]
-            if config.group_id
-            else []
-        )
+        effective_group_ids = get_effective_group_ids(group_ids)
 
         # We've already checked that graphiti_client is not None above
         assert graphiti_client is not None

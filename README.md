@@ -116,7 +116,13 @@ tail ./data/logs/ingest-*.log
 #### 利用可能なMCP Tools
 
 ```javascript
-// 事実検索（メイン機能）
+// RAG用検索
+const result = await mcp.call_tool("search_for_rag", {
+  query: "RAGシステムについて",
+  group_ids: ["default"],
+});
+
+// 事実検索
 const result = await mcp.call_tool("search_memory_facts", {
   query: "RAGシステムについて",
   group_ids: ["default"],
