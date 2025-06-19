@@ -30,6 +30,12 @@ def analyze_log_file(log_file_path):
     retry_events = []
     processing_summary = {}
 
+    # ingest改善機能の分析データ
+    performance_data = []  # パフォーマンスモニタリング
+    worker_optimization = {}  # ワーカー数最適化
+    file_size_warnings = []  # メモリ効率改善
+    chunk_analysis = []  # チャンキング戦略
+
     # リクエスト開始時刻を記録
     pending_llm = {}
     pending_embedding = {}
@@ -239,6 +245,137 @@ def analyze_log_file(log_file_path):
                             }
                         )
 
+                # === ingest改善機能の分析 ===
+
+                # 1. パフォーマンスモニタリング機能
+                elif "⏱️ パフォーマンス -" in line:
+                    # 例: ⏱️ パフォーマンス - rpc_callbacks.md (md): 解析 1.38秒, チャンク分割 0.01秒, エピソード作成 0.00秒, 合計 1.39秒
+                    perf_match = re.search(
+                        r"⏱️ パフォーマンス - (.+?) \((.+?)\): 解析 ([\d.]+)秒, チャンク分割 ([\d.]+)秒, エピソード作成 ([\d.]+)秒, 合計 ([\d.]+)秒",
+                        line,
+                    )
+                    if perf_match:
+                        performance_data.append(
+                            {
+                                "file_name": perf_match.group(1),
+                                "file_type": perf_match.group(2),
+                                "parse_time": float(perf_match.group(3)),
+                                "chunk_time": float(perf_match.group(4)),
+                                "episode_time": float(perf_match.group(5)),
+                                "total_time": float(perf_match.group(6)),
+                                "time": time_obj,
+                                "line_num": line_num,
+                            }
+                        )
+
+                # 2. ワーカー数最適化
+                elif "📊 ワーカー数調整" in line:
+                    # 例: 📊 ワーカー数調整 - 画像ファイル率 40.0%: 3 → 4 ワーカー
+                    worker_match = re.search(
+                        r"📊 ワーカー数調整 - (.+?): (\d+) → (\d+) ワーカー", line
+                    )
+                    if worker_match:
+                        worker_optimization["adjustment_reason"] = worker_match.group(1)
+                        worker_optimization["original_workers"] = int(
+                            worker_match.group(2)
+                        )
+                        worker_optimization["optimized_workers"] = int(
+                            worker_match.group(3)
+                        )
+                        worker_optimization["time"] = time_obj
+                        worker_optimization["line_num"] = line_num
+
+                elif "📈 ファイル統計" in line:
+                    # 例: 📈 ファイル統計 - 総数: 5, 画像: 2, PDF: 2, その他: 1
+                    stats_match = re.search(
+                        r"📈 ファイル統計 - 総数: (\d+), 画像: (\d+), PDF: (\d+), その他: (\d+)",
+                        line,
+                    )
+                    if stats_match:
+                        worker_optimization["file_stats"] = {
+                            "total": int(stats_match.group(1)),
+                            "images": int(stats_match.group(2)),
+                            "pdfs": int(stats_match.group(3)),
+                            "others": int(stats_match.group(4)),
+                        }
+
+                elif "🚀 並列処理モードで実行（ワーカー数:" in line:
+                    # 例: 🚀 並列処理モードで実行（ワーカー数: 3）
+                    parallel_match = re.search(
+                        r"🚀 並列処理モードで実行（ワーカー数: (\d+)）", line
+                    )
+                    if parallel_match:
+                        worker_optimization["final_workers"] = int(
+                            parallel_match.group(1)
+                        )
+
+                # 3. メモリ効率改善
+                elif "⚠️ 大きなファイル検出:" in line:
+                    # 例: ⚠️ 大きなファイル検出: Toodledo超タスク管理術.pdf (57.4MB) - メモリ使用量にご注意ください
+                    size_match = re.search(
+                        r"⚠️ 大きなファイル検出: (.+?) \(([\d.]+)MB\)", line
+                    )
+                    if size_match:
+                        file_size_warnings.append(
+                            {
+                                "file_name": size_match.group(1),
+                                "size_mb": float(size_match.group(2)),
+                                "warning_type": "large_file",
+                                "time": time_obj,
+                                "line_num": line_num,
+                            }
+                        )
+
+                elif "📄 大きめのファイル:" in line:
+                    # 例: 📄 大きめのファイル: document.pdf (75.2MB)
+                    size_match = re.search(
+                        r"📄 大きめのファイル: (.+?) \(([\d.]+)MB\)", line
+                    )
+                    if size_match:
+                        file_size_warnings.append(
+                            {
+                                "file_name": size_match.group(1),
+                                "size_mb": float(size_match.group(2)),
+                                "warning_type": "medium_file",
+                                "time": time_obj,
+                                "line_num": line_num,
+                            }
+                        )
+
+                # 4. チャンキング戦略 (エピソード作成数の情報も収集)
+                elif "📦 一括保存開始（並列）:" in line:
+                    # 例: 📦 一括保存開始（並列）: 661件のエピソード
+                    episode_match = re.search(
+                        r"📦 一括保存開始（並列）: (\d+)件のエピソード", line
+                    )
+                    if episode_match:
+                        chunk_analysis.append(
+                            {
+                                "total_episodes": int(episode_match.group(1)),
+                                "time": time_obj,
+                                "line_num": line_num,
+                            }
+                        )
+
+                elif "📁 ファイル処理開始:" in line:
+                    # 例: 📁 ファイル処理開始: rpc_callbacks.md (5エピソード)
+                    file_episode_match = re.search(
+                        r"📁 ファイル処理開始: (.+?) \((\d+)エピソード\)", line
+                    )
+                    if file_episode_match:
+                        # chunk_analysisに個別ファイルのエピソード数を追加
+                        if not chunk_analysis:
+                            chunk_analysis.append({"file_episodes": []})
+                        elif "file_episodes" not in chunk_analysis[-1]:
+                            chunk_analysis[-1]["file_episodes"] = []
+
+                        chunk_analysis[-1]["file_episodes"].append(
+                            {
+                                "file_name": file_episode_match.group(1),
+                                "episode_count": int(file_episode_match.group(2)),
+                            }
+                        )
+
     except FileNotFoundError:
         print(f"エラー: ファイルが見つかりません: {log_file_path}")
         return None
@@ -253,6 +390,11 @@ def analyze_log_file(log_file_path):
         "processing_summary": processing_summary,
         "pending_llm": pending_llm,
         "pending_embedding": pending_embedding,
+        # ingest改善機能の分析結果
+        "performance_data": performance_data,
+        "worker_optimization": worker_optimization,
+        "file_size_warnings": file_size_warnings,
+        "chunk_analysis": chunk_analysis,
     }
 
 
@@ -471,6 +613,177 @@ def print_statistics(analysis_result):
             print(f"  🛡️ Rate Limitリトライによる回復: {rate_limit_count}回")
 
 
+def print_ingest_improvements_analysis(analysis_result):
+    """ingest機能の分析結果を出力"""
+    if not analysis_result:
+        return
+
+    performance_data = analysis_result.get("performance_data", [])
+    worker_optimization = analysis_result.get("worker_optimization", {})
+    file_size_warnings = analysis_result.get("file_size_warnings", [])
+    chunk_analysis = analysis_result.get("chunk_analysis", [])
+
+    print("\n" + "=" * 80)
+    print("📈 INGEST動作分析")
+    print("=" * 80)
+
+    # 1. パフォーマンスモニタリング機能
+    if performance_data:
+        print("\n🎯 1. パフォーマンスモニタリング機能 ✅")
+        print(f"  監視対象ファイル数: {len(performance_data)}件")
+
+        # ファイルタイプ別の統計
+        by_type = {}
+        for data in performance_data:
+            file_type = data["file_type"]
+            if file_type not in by_type:
+                by_type[file_type] = []
+            by_type[file_type].append(data)
+
+        print(f"  ファイルタイプ: {', '.join(by_type.keys())}")
+
+        # 各処理ステップの統計
+        total_parse = sum(data["parse_time"] for data in performance_data)
+        total_chunk = sum(data["chunk_time"] for data in performance_data)
+        total_episode = sum(data["episode_time"] for data in performance_data)
+        total_processing = sum(data["total_time"] for data in performance_data)
+
+        print("\n  📊 処理時間統計:")
+        print(
+            f"    解析処理: {total_parse:.2f}秒 ({total_parse / total_processing * 100:.1f}%)"
+        )
+        print(
+            f"    チャンク分割: {total_chunk:.2f}秒 ({total_chunk / total_processing * 100:.1f}%)"
+        )
+        print(
+            f"    エピソード作成: {total_episode:.2f}秒 ({total_episode / total_processing * 100:.1f}%)"
+        )
+        print(f"    総処理時間: {total_processing:.2f}秒")
+
+        # ファイルタイプ別詳細
+        print("\n  📁 ファイルタイプ別パフォーマンス:")
+        for file_type, data_list in by_type.items():
+            avg_parse = sum(d["parse_time"] for d in data_list) / len(data_list)
+            avg_total = sum(d["total_time"] for d in data_list) / len(data_list)
+            print(
+                f"    {file_type}: 平均解析{avg_parse:.2f}秒, 平均合計{avg_total:.2f}秒 ({len(data_list)}ファイル)"
+            )
+
+        # 最も時間のかかったファイル
+        slowest = max(performance_data, key=lambda x: x["total_time"])
+        fastest = min(performance_data, key=lambda x: x["total_time"])
+        print("\n  ⏱️ 処理時間:")
+        print(
+            f"    最長: {slowest['file_name']} ({slowest['file_type']}) - {slowest['total_time']:.2f}秒"
+        )
+        print(
+            f"    最短: {fastest['file_name']} ({fastest['file_type']}) - {fastest['total_time']:.2f}秒"
+        )
+
+    # 2. 並列処理最適化
+    if worker_optimization:
+        print("\n⚡ 2. 並列処理最適化 ✅")
+
+        if "file_stats" in worker_optimization:
+            stats = worker_optimization["file_stats"]
+            print(
+                f"  ファイル統計: 総数{stats['total']}, 画像{stats['images']}, PDF{stats['pdfs']}, その他{stats['others']}"
+            )
+
+            # 比率計算
+            if stats["total"] > 0:
+                image_ratio = stats["images"] / stats["total"] * 100
+                pdf_ratio = stats["pdfs"] / stats["total"] * 100
+                print(f"  ファイル比率: 画像{image_ratio:.1f}%, PDF{pdf_ratio:.1f}%")
+
+        if "adjustment_reason" in worker_optimization:
+            print(f"  ワーカー数調整: {worker_optimization['adjustment_reason']}")
+            print(
+                f"  {worker_optimization['original_workers']} → {worker_optimization['optimized_workers']} ワーカー"
+            )
+
+        if "final_workers" in worker_optimization:
+            print(f"  最終ワーカー数: {worker_optimization['final_workers']}")
+
+        # 最適化効果の評価
+        if (
+            "original_workers" in worker_optimization
+            and "optimized_workers" in worker_optimization
+        ):
+            original = worker_optimization["original_workers"]
+            optimized = worker_optimization["optimized_workers"]
+            if optimized != original:
+                print(
+                    f"  🎯 最適化効果: ファイル特性に応じて{abs(optimized - original)}ワーカー{'増加' if optimized > original else '削減'}"
+                )
+            else:
+                print("  🎯 最適化効果: デフォルト設定が最適と判定")
+
+    # 3. メモリ効率改善
+    if file_size_warnings:
+        print("\n💾 3. メモリ効率改善 ✅")
+        print(f"  監視対象ファイル数: {len(file_size_warnings)}件")
+
+        large_files = [
+            w for w in file_size_warnings if w["warning_type"] == "large_file"
+        ]
+        medium_files = [
+            w for w in file_size_warnings if w["warning_type"] == "medium_file"
+        ]
+
+        if large_files:
+            print(f"  ⚠️ 大きなファイル(100MB+): {len(large_files)}件")
+            for warning in large_files:
+                print(f"    {warning['file_name']}: {warning['size_mb']:.1f}MB")
+
+        if medium_files:
+            print(f"  📄 大きめのファイル(50-100MB): {len(medium_files)}件")
+            for warning in medium_files:
+                print(f"    {warning['file_name']}: {warning['size_mb']:.1f}MB")
+
+        if file_size_warnings:
+            total_size = sum(w["size_mb"] for w in file_size_warnings)
+            avg_size = total_size / len(file_size_warnings)
+            max_size = max(w["size_mb"] for w in file_size_warnings)
+            print(
+                f"  📊 サイズ統計: 平均{avg_size:.1f}MB, 最大{max_size:.1f}MB, 合計{total_size:.1f}MB"
+            )
+
+    # 4. チャンキング戦略改善
+    if chunk_analysis:
+        print("\n🔀 4. チャンキング戦略改善 ✅")
+
+        for analysis in chunk_analysis:
+            if "total_episodes" in analysis:
+                print(f"  総エピソード数: {analysis['total_episodes']}件")
+
+            if "file_episodes" in analysis:
+                print("  ファイル別エピソード数:")
+                file_episodes = analysis["file_episodes"]
+                total_files = len(file_episodes)
+                total_episodes = sum(fe["episode_count"] for fe in file_episodes)
+
+                # ファイル別詳細
+                for file_ep in file_episodes:
+                    ratio = (
+                        file_ep["episode_count"] / total_episodes * 100
+                        if total_episodes > 0
+                        else 0
+                    )
+                    print(
+                        f"    {file_ep['file_name']}: {file_ep['episode_count']}件 ({ratio:.1f}%)"
+                    )
+
+                # 統計情報
+                if file_episodes:
+                    avg_episodes = total_episodes / total_files
+                    max_episodes = max(fe["episode_count"] for fe in file_episodes)
+                    min_episodes = min(fe["episode_count"] for fe in file_episodes)
+                    print(
+                        f"  📊 エピソード統計: 平均{avg_episodes:.1f}件/ファイル, 最大{max_episodes}件, 最小{min_episodes}件"
+                    )
+
+
 def print_failed_files(log_file_path):
     """失敗ファイルの詳細を表示"""
     try:
@@ -515,6 +828,9 @@ def main():
 
     analysis_result = analyze_log_file(log_file_path)
     print_statistics(analysis_result)
+
+    # ingest改善機能の分析結果を表示
+    print_ingest_improvements_analysis(analysis_result)
 
     # 失敗ファイルの詳細を表示
     print_failed_files(log_file_path)

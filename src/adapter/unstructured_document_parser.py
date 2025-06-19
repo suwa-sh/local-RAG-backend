@@ -64,11 +64,12 @@ class UnstructuredDocumentParser:
             return []
 
         # Unstructuredのchunk_elementsを使用してチャンク化
+        # より意味的な境界での分割を促進するために70%で新チャンクを開始
         chunks_elements = chunk_by_title(
             elements,
             max_characters=self.max_characters,
             combine_text_under_n_chars=self.combine_text_under_n_chars,
-            new_after_n_chars=self.max_characters // 2,
+            new_after_n_chars=int(self.max_characters * 0.7),
             overlap=self.overlap,
         )
 

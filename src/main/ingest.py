@@ -75,34 +75,31 @@ def create_usecase() -> RegisterDocumentUseCase:
     )
 
 
-def setup_logging() -> None:
+def setup_logging(log_level: str = "INFO") -> None:
     """
     ログ設定を初期化する
+
+    Args:
+        log_level: ログレベル（DEBUG, INFO, WARNING, ERROR）
     """
     # 並列処理対応のログ設定を使用
     from src.adapter.logging_utils import setup_parallel_logging
 
-    setup_parallel_logging()
+    setup_parallel_logging(log_level)
 
-    # 外部ライブラリのログレベルを調整
+    # API呼び出し分析に必要なopenaiログを有効化
+    logging.getLogger("openai").setLevel(logging.DEBUG)
+
+    # 最小限の外部ライブラリログ制御（特に問題のあるもののみ）
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("neo4j").setLevel(logging.WARNING)
-    logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)  # Neo4j警告を抑制
-    logging.getLogger("unstructured").setLevel(logging.WARNING)
-    logging.getLogger("unstructured.trace").setLevel(logging.WARNING)
-
-    # Graphitiライブラリのログをプロダクション向けに調整
-    logging.getLogger("graphiti_core").setLevel(logging.INFO)
     logging.getLogger("graphiti_core.utils.maintenance.edge_operations").setLevel(
         logging.ERROR
-    )  # 日付パース警告を抑制
-    # DEBUGログを無効化してパフォーマンス向上
-    logging.getLogger("src.usecase.register_document_usecase").setLevel(logging.INFO)
-    logging.getLogger("src.adapter.graphiti_episode_repository").setLevel(logging.INFO)
+    )
 
-    print("🔍 DEBUG モード（並列処理）でログを出力しています...")
+    if log_level == "DEBUG":
+        print("🔍 DEBUG モード（並列処理）でログを出力しています...")
+    else:
+        print(f"📊 {log_level} レベルでログを出力しています...")
 
 
 async def main() -> int:
@@ -116,19 +113,25 @@ async def main() -> int:
         # コマンドライン引数のパース
         args = parse_arguments()
 
-        # ログ設定の初期化
-        setup_logging()
-
-        # 設定読み込み（GROUP_ID環境変数から取得）
+        # 設定読み込み（環境変数から取得）
         config = load_config()
+
+        # ログ設定の初期化（環境変数のログレベルを使用）
+        setup_logging(config.logging.level)
+
         group_id = GroupId(config.group_id)
 
         # ユースケースの作成
         usecase = create_usecase()
 
-        print(f"🚀 並列処理モードで実行（ワーカー数: {args.workers}）")
+        print(
+            f"🚀 2段階並列処理モードで実行（チャンク: {args.workers}ワーカー, 登録: {config.parallel.register_workers}ワーカー）"
+        )
         result = await usecase.execute_parallel(
-            group_id, args.directory, max_workers=args.workers
+            group_id,
+            args.directory,
+            max_workers=args.workers,
+            register_workers=config.parallel.register_workers,
         )
 
         # 結果の表示

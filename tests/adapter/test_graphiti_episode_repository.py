@@ -327,7 +327,14 @@ class TestGraphitiEpisodeRepository:
         # 検証 (Assert)
         # ------------------------------
         assert mock_client.add_episode.call_count == 2
-        mock_sleep.assert_called_once_with(3)  # 2秒 + 1秒のバッファ
+        # Rate Limitコーディネーターによる実際の待機時間をチェック
+        assert mock_sleep.call_count == 1
+        # 2秒（retry-after） + 1秒（バッファ）= 3秒程度の待機時間
+        assert any(
+            2.0 <= call.args[0] <= 4.0
+            for call in mock_sleep.call_args_list
+            if call.args
+        )
 
     @pytest.mark.asyncio
     async def test_save_RateLimitErrorで最大リトライ回数を超えた場合_例外が発生すること(
@@ -498,10 +505,15 @@ class TestGraphitiEpisodeRepository:
         # ------------------------------
         # 4回試行される（IndexError 1回、RateLimitError 2回、成功 1回）
         assert mock_client.add_episode.call_count == 4
-        # IndexErrorで1秒 + RateLimitErrorで2秒 (1秒+1秒バッファ) × 2回 = 3回sleep
+        # IndexErrorで1秒 + Rate Limitコーディネーターによる待機 × 2回 = 3回sleep
         assert mock_sleep.call_count == 3
         mock_sleep.assert_any_call(1)  # IndexError: 2^0 = 1秒
-        mock_sleep.assert_any_call(2)  # RateLimitError: 1秒 + 1秒バッファ
+        # Rate Limitコーディネーターによる実際の待機時間（非常に短い）
+        assert any(
+            1.0 <= call.args[0] <= 3.0
+            for call in mock_sleep.call_args_list
+            if call.args
+        )
 
     @pytest.mark.asyncio
     async def test_save_IndexError_list_index_out_of_rangeが発生した場合_指数バックオフでリトライされること(

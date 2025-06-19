@@ -1,6 +1,9 @@
 """RegisterDocumentUseCase - ドキュメント登録のユースケース"""
 
 import logging
+import multiprocessing
+import time
+from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -44,6 +47,73 @@ class RegisterDocumentUseCase:
         self._episode_repository = episode_repository
         self._logger = logging.getLogger(__name__)
 
+    def _determine_optimal_workers(
+        self, documents: List, requested_workers: int
+    ) -> int:
+        """
+        ファイルタイプに応じて最適なワーカー数を決定する
+
+        Args:
+            documents: 処理対象のドキュメントリスト
+            requested_workers: リクエストされたワーカー数
+
+        Returns:
+            int: 最適化されたワーカー数
+        """
+        if not documents:
+            return 1
+
+        # ファイルタイプの統計を取得
+        file_types = [doc.file_type for doc in documents]
+        type_counter = Counter(file_types)
+        total_files = len(documents)
+
+        # 画像ファイルのタイプ（CPU負荷が高い）
+        image_types = {"png", "jpg", "jpeg", "bmp", "tiff", "tif", "heic"}
+        image_count = sum(
+            count
+            for file_type, count in type_counter.items()
+            if file_type.lower() in image_types
+        )
+
+        # PDF ファイルの数（メモリ使用量が多い）
+        pdf_count = type_counter.get("pdf", 0)
+
+        # 画像ファイルの割合
+        image_ratio = image_count / total_files
+        pdf_ratio = pdf_count / total_files
+
+        cpu_count = multiprocessing.cpu_count()
+
+        # 最適なワーカー数を決定
+        if image_ratio > 0.5:  # 画像ファイルが50%以上
+            optimal_workers = min(cpu_count // 2, total_files, 4)
+            self._logger.info(
+                f"📊 ワーカー数調整 - 画像ファイル率 {image_ratio:.1%}: "
+                f"{requested_workers} → {optimal_workers} ワーカー"
+            )
+        elif pdf_ratio > 0.7:  # PDFファイルが70%以上
+            optimal_workers = min(cpu_count // 2, total_files, 6)
+            self._logger.info(
+                f"📊 ワーカー数調整 - PDF率 {pdf_ratio:.1%}: "
+                f"{requested_workers} → {optimal_workers} ワーカー"
+            )
+        else:  # テキストファイルが多い場合は積極的に並列化
+            optimal_workers = min(cpu_count, total_files, requested_workers)
+            if optimal_workers != requested_workers:
+                self._logger.info(
+                    f"📊 ワーカー数調整 - 軽量ファイル中心: "
+                    f"{requested_workers} → {optimal_workers} ワーカー"
+                )
+
+        # ファイル種別の統計をログ出力
+        self._logger.info(
+            f"📈 ファイル統計 - 総数: {total_files}, 画像: {image_count}, "
+            f"PDF: {pdf_count}, その他: {total_files - image_count - pdf_count}"
+        )
+
+        return max(1, optimal_workers)  # 最低1ワーカーは確保
+
     def _process_single_document(
         self, document, group_id: GroupId, index: int, total: int
     ) -> Tuple[List, int, str]:
@@ -58,15 +128,23 @@ class RegisterDocumentUseCase:
                 f"🔄 ファイル処理中 ({index}/{total}): {document.file_name}"
             )
 
+            # 全体の処理時間計測開始
+            start_time = time.time()
+
             # ドキュメントを解析
+            parse_start = time.time()
             elements = self._document_parser.parse(document.file_path)
+            parse_time = time.time() - parse_start
             self._logger.debug(f"📝 解析完了 - 要素数: {len(elements)}")
 
             # チャンクに分割
+            chunk_start = time.time()
             chunks = self._document_parser.split_elements(elements, document)
+            chunk_time = time.time() - chunk_start
             self._logger.debug(f"🔀 チャンク分割完了 - チャンク数: {len(chunks)}")
 
             # チャンクからエピソードを作成
+            episode_start = time.time()
             episodes = []
             for j, chunk in enumerate(chunks):
                 episode = chunk.to_episode(group_id)
@@ -74,6 +152,17 @@ class RegisterDocumentUseCase:
                 self._logger.debug(
                     f"📋 エピソード作成 ({j + 1}/{len(chunks)}): {episode.name}"
                 )
+            episode_time = time.time() - episode_start
+
+            # 全体の処理時間
+            total_time = time.time() - start_time
+
+            # パフォーマンス情報をログ出力
+            self._logger.info(
+                f"⏱️ パフォーマンス - {document.file_name} ({document.file_type}): "
+                f"解析 {parse_time:.2f}秒, チャンク分割 {chunk_time:.2f}秒, "
+                f"エピソード作成 {episode_time:.2f}秒, 合計 {total_time:.2f}秒"
+            )
 
             return episodes, len(chunks), None
 
@@ -83,15 +172,20 @@ class RegisterDocumentUseCase:
             return [], 0, document.file_path
 
     async def execute_parallel(
-        self, group_id: GroupId, directory: str, max_workers: int = 3
+        self,
+        group_id: GroupId,
+        directory: str,
+        max_workers: int = 3,
+        register_workers: int = 2,
     ) -> RegisterResult:
         """
-        ドキュメント登録の実行（並列処理版）
+        ドキュメント登録の実行（2段階並列処理版）
 
         Args:
             group_id: グループID
             directory: 対象ディレクトリ
-            max_workers: 最大並列ワーカー数（デフォルト: 3）
+            max_workers: チャンク処理の最大並列ワーカー数（デフォルト: 3）
+            register_workers: 登録処理の最大並列ワーカー数（デフォルト: 2）
 
         Returns:
             RegisterResult: 登録結果
@@ -101,7 +195,10 @@ class RegisterDocumentUseCase:
         await self._episode_repository.initialize()
 
         self._logger.info(
-            f"📁 ドキュメント登録開始（並列処理） - group_id: {group_id.value}, directory: {directory}"
+            f"📁 ドキュメント登録開始（2段階並列処理） - group_id: {group_id.value}, directory: {directory}"
+        )
+        self._logger.info(
+            f"⚙️ 並列処理設定 - チャンク処理: {max_workers}ワーカー, 登録処理: {register_workers}ワーカー"
         )
 
         # 1. ファイル一覧取得
@@ -118,12 +215,15 @@ class RegisterDocumentUseCase:
                 total_files=0, total_chunks=0, total_episodes=0, success=True
             )
 
-        # 3. 並列処理でドキュメント処理
+        # 3. 最適なワーカー数を決定
+        optimal_workers = self._determine_optimal_workers(documents, max_workers)
+
+        # 4. 並列処理でドキュメント処理
         all_episodes = []
         total_chunks = 0
         failed_files = []
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
             # 並列実行のためのタスクを準備
             future_to_doc = {
                 executor.submit(
@@ -142,11 +242,19 @@ class RegisterDocumentUseCase:
                     all_episodes.extend(episodes)
                     total_chunks += chunks
 
-        # 4. エピソードを一括保存
+        # 5. エピソードを一括保存（登録用ワーカー数で制御）
         if all_episodes:
-            self._logger.info(f"💾 エピソード一括保存開始 - 件数: {len(all_episodes)}")
-            await self._episode_repository.save_batch(all_episodes)
-            self._logger.info("✅ エピソード一括保存完了")
+            self._logger.info(
+                f"💾 エピソード一括保存開始 - 件数: {len(all_episodes)}, 登録ワーカー: {register_workers}"
+            )
+            save_start = time.time()
+            await self._episode_repository.save_batch(
+                all_episodes, max_concurrent=register_workers
+            )
+            save_time = time.time() - save_start
+            self._logger.info(
+                f"✅ エピソード一括保存完了 - 保存時間: {save_time:.2f}秒, 登録ワーカー: {register_workers}"
+            )
 
         if failed_files:
             self._logger.warning(f"⚠️ 処理失敗ファイル数: {len(failed_files)}")

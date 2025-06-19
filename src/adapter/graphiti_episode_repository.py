@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import threading
 from typing import List, Dict
 from graphiti_core.graphiti import Graphiti, EpisodeType
 from graphiti_core.llm_client import OpenAIClient, LLMConfig
@@ -10,6 +11,7 @@ from graphiti_core.llm_client.errors import RateLimitError
 from src.domain.episode import Episode
 from src.adapter.entity_cache import get_entity_cache
 from src.adapter.rate_limit_retry_handler import RateLimitRetryHandler
+from src.adapter.rate_limit_coordinator import get_rate_limit_coordinator
 
 
 class GraphitiEpisodeRepository:
@@ -84,8 +86,12 @@ class GraphitiEpisodeRepository:
             logger=self._logger,
         )
 
+        # Rate limitコーディネーターの初期化
+        self.rate_limit_coordinator = get_rate_limit_coordinator()
+
         self._logger.info(f"🔗 Graphitiクライアント初期化完了 - Neo4j: {neo4j_uri}")
         self._logger.info("📋 エンティティキャッシュ初期化完了")
+        self._logger.info("🔄 Rate Limitスレッド同期コーディネーター初期化完了")
 
     async def initialize(self) -> None:
         """
@@ -109,6 +115,12 @@ class GraphitiEpisodeRepository:
         Raises:
             Exception: Graphitiでエラーが発生した場合
         """
+        # スレッドIDを取得
+        thread_id = str(threading.current_thread().ident or "unknown")
+
+        # Rate Limit状態をチェックし、必要に応じて待機
+        await self.rate_limit_coordinator.check_and_wait_if_needed(thread_id)
+
         # episode_typeを対応するEpisodeTypeに変換
         episode_type_mapping = {
             "text": EpisodeType.text,
@@ -142,19 +154,22 @@ class GraphitiEpisodeRepository:
             except RateLimitError as e:
                 if rate_limit_attempts < self.retry_handler.max_retries:
                     retry_after = self.retry_handler.extract_retry_after_time(e)
-                    if retry_after:
-                        self._logger.info(
-                            f"🔄 Rate limit detected. Waiting {retry_after} seconds before retry "
-                            f"(rate limit attempt {rate_limit_attempts + 1}/{self.retry_handler.max_retries})"
-                        )
-                        await asyncio.sleep(retry_after)
-                    else:
-                        self._logger.info(
-                            f"🔄 Rate limit detected. Using default wait time "
-                            f"({self.retry_handler.default_wait_time} seconds) before retry "
-                            f"(rate limit attempt {rate_limit_attempts + 1}/{self.retry_handler.max_retries})"
-                        )
-                        await asyncio.sleep(self.retry_handler.default_wait_time)
+                    wait_time = (
+                        retry_after
+                        if retry_after
+                        else self.retry_handler.default_wait_time
+                    )
+
+                    # Rate Limitを全スレッドに通知
+                    await self.rate_limit_coordinator.notify_rate_limit(
+                        thread_id, wait_time, str(e)
+                    )
+
+                    # このスレッドが実際に待機
+                    await self.rate_limit_coordinator.wait_for_rate_limit_completion(
+                        thread_id
+                    )
+
                     rate_limit_attempts += 1
                 else:
                     self._logger.error(

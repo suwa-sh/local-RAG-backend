@@ -100,8 +100,13 @@ def get_file_context_logger(name: str) -> FileContextLogger:
     return FileContextLogger(name)
 
 
-def setup_parallel_logging() -> None:
-    """並列処理用のログ設定を初期化する"""
+def setup_parallel_logging(log_level: str = "INFO") -> None:
+    """
+    並列処理用のログ設定を初期化する
+
+    Args:
+        log_level: ログレベル（DEBUG, INFO, WARNING, ERROR）
+    """
     # ルートロガーを取得
     root_logger = logging.getLogger()
 
@@ -124,4 +129,7 @@ def setup_parallel_logging() -> None:
 
     # ハンドラーを追加
     root_logger.addHandler(handler)
-    root_logger.setLevel(logging.DEBUG)
+
+    # 環境変数で指定されたログレベルを設定
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    root_logger.setLevel(numeric_level)
