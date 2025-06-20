@@ -1,6 +1,7 @@
 """FileSystemDocumentReader - ファイルシステムからの読み込み"""
 
 import logging
+import shutil
 from pathlib import Path
 from typing import List
 from src.domain.document import Document
@@ -9,9 +10,15 @@ from src.domain.document import Document
 class FileSystemDocumentReader:
     """ファイルシステムからドキュメントを読み込むリーダー"""
 
-    def __init__(self) -> None:
-        """FileSystemDocumentReaderを初期化する"""
+    def __init__(self, base_directory: str | None = None) -> None:
+        """
+        FileSystemDocumentReaderを初期化する
+
+        Args:
+            base_directory: 相対パス計算の基準ディレクトリ
+        """
         self._logger = logging.getLogger(__name__)
+        self._base_directory = base_directory
 
     def list_supported_files(self, directory: str) -> List[str]:
         """
@@ -119,3 +126,167 @@ class FileSystemDocumentReader:
                 )
         except OSError as e:
             self._logger.debug(f"ファイルサイズ取得失敗: {file_path} - {e}")
+
+    def move_file(self, source_path: str, destination_directory: str) -> str:
+        """
+        ファイルを指定ディレクトリに移動する（ディレクトリ構造を維持）
+
+        Args:
+            source_path: 移動元ファイルパス
+            destination_directory: 移動先ディレクトリ
+
+        Returns:
+            str: 移動後のファイルパス
+
+        Raises:
+            FileNotFoundError: 移動元ファイルが存在しない場合
+            OSError: ファイル移動に失敗した場合
+        """
+        source = Path(source_path)
+        dest_base_dir = Path(destination_directory)
+
+        if not source.exists():
+            raise FileNotFoundError(f"移動元ファイルが存在しません: {source_path}")
+
+        # ディレクトリ構造を維持して移動先パスを構築
+        if self._base_directory:
+            # 基準ディレクトリからの相対パスを取得
+            try:
+                relative_path = source.relative_to(Path(self._base_directory))
+                destination_path = dest_base_dir / relative_path
+            except ValueError:
+                # 相対パス計算に失敗した場合はファイル名のみ使用
+                self._logger.warning(
+                    f"⚠️ 相対パス計算失敗: {source_path} (基準: {self._base_directory})"
+                )
+                destination_path = dest_base_dir / source.name
+        else:
+            # 基準ディレクトリが指定されていない場合はファイル名のみ使用
+            destination_path = dest_base_dir / source.name
+
+        # 移動先ディレクトリを作成
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 同名ファイルが既に存在する場合のハンドリング
+        if destination_path.exists():
+            # タイムスタンプ付きの名前で回避
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stem = destination_path.stem
+            suffix = destination_path.suffix
+            destination_path = destination_path.parent / f"{stem}_{timestamp}{suffix}"
+
+        try:
+            shutil.move(str(source), str(destination_path))
+            self._logger.info(
+                f"📁 ファイル移動完了: {source.name} → {destination_path.relative_to(dest_base_dir)}"
+            )
+            return str(destination_path)
+
+        except OSError as e:
+            self._logger.error(
+                f"❌ ファイル移動失敗: {source_path} → {destination_directory} - {e}"
+            )
+            raise
+
+    def create_directory(self, directory_path: str) -> None:
+        """
+        ディレクトリを作成する（存在しない場合）
+
+        Args:
+            directory_path: 作成するディレクトリパス
+
+        Raises:
+            OSError: ディレクトリ作成に失敗した場合
+        """
+        dir_path = Path(directory_path)
+
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            self._logger.debug(f"📁 ディレクトリ作成: {directory_path}")
+
+        except OSError as e:
+            self._logger.error(f"❌ ディレクトリ作成失敗: {directory_path} - {e}")
+            raise
+
+    def copy_file(self, source_path: str, destination_directory: str) -> str:
+        """
+        ファイルを指定ディレクトリにコピーする
+
+        Args:
+            source_path: コピー元ファイルパス
+            destination_directory: コピー先ディレクトリ
+
+        Returns:
+            str: コピー後のファイルパス
+
+        Raises:
+            FileNotFoundError: コピー元ファイルが存在しない場合
+            OSError: ファイルコピーに失敗した場合
+        """
+        source = Path(source_path)
+        dest_dir = Path(destination_directory)
+
+        if not source.exists():
+            raise FileNotFoundError(f"コピー元ファイルが存在しません: {source_path}")
+
+        # コピー先ディレクトリを作成
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        # コピー先ファイルパス
+        destination_path = dest_dir / source.name
+
+        # 同名ファイルが既に存在する場合のハンドリング
+        if destination_path.exists():
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stem = destination_path.stem
+            suffix = destination_path.suffix
+            destination_path = dest_dir / f"{stem}_{timestamp}{suffix}"
+
+        try:
+            shutil.copy2(str(source), str(destination_path))
+            self._logger.debug(
+                f"📄 ファイルコピー完了: {source.name} → {destination_directory}"
+            )
+            return str(destination_path)
+
+        except OSError as e:
+            self._logger.error(
+                f"❌ ファイルコピー失敗: {source_path} → {destination_directory} - {e}"
+            )
+            raise
+
+    def file_exists(self, file_path: str) -> bool:
+        """
+        ファイルが存在するかチェックする
+
+        Args:
+            file_path: チェック対象のファイルパス
+
+        Returns:
+            bool: ファイルが存在する場合True
+        """
+        return Path(file_path).exists()
+
+    def get_relative_path(self, file_path: str, base_directory: str) -> str:
+        """
+        基準ディレクトリからの相対パスを取得する
+
+        Args:
+            file_path: ファイルパス
+            base_directory: 基準ディレクトリ
+
+        Returns:
+            str: 相対パス
+        """
+        file_path_obj = Path(file_path).resolve()
+        base_path_obj = Path(base_directory).resolve()
+
+        try:
+            return str(file_path_obj.relative_to(base_path_obj))
+        except ValueError:
+            # base_directoryの外部にある場合はファイル名のみ返す
+            return file_path_obj.name

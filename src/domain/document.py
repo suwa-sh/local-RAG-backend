@@ -85,6 +85,11 @@ class Document:
         """ファイルパスを取得する"""
         return self._file_path
 
+    @file_path.setter
+    def file_path(self, value: str) -> None:
+        """ファイルパスを設定する"""
+        self._file_path = value
+
     @property
     def file_name(self) -> str:
         """ファイル名を取得する"""

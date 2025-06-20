@@ -63,6 +63,7 @@ class ParallelConfig:
 
     chunk_workers: int = 3
     register_workers: int = 2
+    episode_batch_size: int = 20
 
 
 @dataclass
@@ -164,6 +165,7 @@ def load_config() -> AppConfig:
     parallel_config = ParallelConfig(
         chunk_workers=int(os.getenv("INGEST_CHUNK_WORKERS", "3")),
         register_workers=int(os.getenv("INGEST_REGISTER_WORKERS", "1")),
+        episode_batch_size=int(os.getenv("INGEST_EPISODE_BATCH_SIZE", "20")),
     )
 
     return AppConfig(

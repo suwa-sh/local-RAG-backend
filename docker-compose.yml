@@ -55,7 +55,9 @@ services:
     environment:
       - NEO4J_URI=bolt://neo4j:7687
     volumes:
-      - ./data/input:/app/data/input:ro
+      - ./data/input:/app/data/input
+      - ./data/input_chunks:/app/data/input_chunks
+      - ./data/done:/app/data/done
       - ./data/logs:/app/data/logs
     networks:
       - rag-network

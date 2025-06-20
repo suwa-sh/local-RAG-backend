@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Dict, Any, TYPE_CHECKING
+import json
 
 if TYPE_CHECKING:
     from .document import Document
@@ -115,3 +116,100 @@ class Chunk:
             f"Chunk(id='{self._id}', text='{self._text[:30]}...', "
             f"metadata={self._metadata}, source_document={self._source_document.file_name})"
         )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        チャンクを辞書形式にシリアライズする
+
+        Returns:
+            Dict[str, Any]: シリアライズされたチャンクデータ
+        """
+        return {
+            "chunk_id": self._id,
+            "position": self._metadata.get("position", 0),
+            "text": self._text,
+            "metadata": {
+                "original_file": self._source_document.file_path,
+                "file_name": self._source_document.file_name,
+                "file_type": self._source_document.file_type,
+                "relative_path": self._source_document.relative_path,
+                "file_last_modified": self._source_document.file_last_modified.isoformat(),
+                "chunk_metadata": self._metadata,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Chunk":
+        """
+        辞書形式からチャンクを復元する
+
+        Args:
+            data: シリアライズされたチャンクデータ
+
+        Returns:
+            Chunk: 復元されたチャンクインスタンス
+
+        Raises:
+            ValueError: 必須データが不足している場合
+            KeyError: 必要なキーが存在しない場合
+        """
+        from .document import Document
+
+        try:
+            # メタデータから文書情報を復元
+            metadata = data["metadata"]
+            file_last_modified = datetime.fromisoformat(metadata["file_last_modified"])
+
+            # Documentインスタンスを復元（ファイル内容は空文字列でプレースホルダー）
+            source_document = Document(
+                file_path=metadata["original_file"],
+                file_name=metadata["file_name"],
+                file_type=metadata["file_type"],
+                content="<チャンクファイルから復元>",  # プレースホルダー
+                file_last_modified=file_last_modified,
+                relative_path=metadata["relative_path"],
+            )
+
+            # Chunkインスタンスを作成
+            return cls(
+                id=data["chunk_id"],
+                text=data["text"],
+                metadata=metadata.get("chunk_metadata", {}),
+                source_document=source_document,
+            )
+
+        except KeyError as e:
+            raise KeyError(f"チャンクデータに必須キーが存在しません: {e}")
+        except ValueError as e:
+            raise ValueError(f"チャンクデータの形式が不正です: {e}")
+
+    def to_json(self) -> str:
+        """
+        チャンクをJSON文字列にシリアライズする
+
+        Returns:
+            str: JSON文字列
+        """
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "Chunk":
+        """
+        JSON文字列からチャンクを復元する
+
+        Args:
+            json_str: JSON文字列
+
+        Returns:
+            Chunk: 復元されたチャンクインスタンス
+
+        Raises:
+            json.JSONDecodeError: JSON解析エラー
+            ValueError: データ形式エラー
+            KeyError: 必要なキーが存在しない場合
+        """
+        try:
+            data = json.loads(json_str)
+            return cls.from_dict(data)
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(f"JSON解析エラー: {e}", json_str, e.pos)

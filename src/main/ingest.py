@@ -10,6 +10,7 @@ from src.usecase.register_document_usecase import RegisterDocumentUseCase
 from src.adapter.filesystem_document_reader import FileSystemDocumentReader
 from src.adapter.unstructured_document_parser import UnstructuredDocumentParser
 from src.adapter.graphiti_episode_repository import GraphitiEpisodeRepository
+from src.adapter.chunk_file_manager import ChunkFileManager
 from src.main.settings import load_config
 
 
@@ -67,11 +68,15 @@ def create_usecase() -> RegisterDocumentUseCase:
         embedding_model=config.embedding.name,
     )
 
+    # チャンクファイルマネージャーの初期化
+    chunk_file_manager = ChunkFileManager()
+
     # ユースケースの作成
     return RegisterDocumentUseCase(
         file_reader=file_reader,
         document_parser=document_parser,
         episode_repository=episode_repository,
+        chunk_file_manager=chunk_file_manager,
     )
 
 
