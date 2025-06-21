@@ -72,7 +72,7 @@ class TestIngest:
         # 検証 (Assert)
         # ------------------------------
         assert usecase is not None
-        assert hasattr(usecase, "execute_parallel")
+        assert hasattr(usecase, "execute")
         assert hasattr(usecase, "_file_reader")
         assert hasattr(usecase, "_document_parser")
         assert hasattr(usecase, "_episode_repository")

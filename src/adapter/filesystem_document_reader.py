@@ -182,6 +182,10 @@ class FileSystemDocumentReader:
             self._logger.info(
                 f"📁 ファイル移動完了: {source.name} → {destination_path.relative_to(dest_base_dir)}"
             )
+
+            # 移動元のディレクトリが空になった場合は削除
+            self._cleanup_empty_directories(source.parent)
+
             return str(destination_path)
 
         except OSError as e:
@@ -189,3 +193,37 @@ class FileSystemDocumentReader:
                 f"❌ ファイル移動失敗: {source_path} → {destination_directory} - {e}"
             )
             raise
+
+    def _cleanup_empty_directories(self, directory: Path) -> None:
+        """
+        空のディレクトリを再帰的に削除する（base_directoryまでは削除しない）
+
+        Args:
+            directory: 削除対象のディレクトリ
+        """
+        if not directory.exists() or not directory.is_dir():
+            return
+
+        # base_directoryの親ディレクトリ以下のディレクトリのみ削除対象
+        # （input/, work/, done/ すべてを対象にするため）
+        if self._base_directory:
+            base_path = Path(self._base_directory)
+            # base_directoryの親ディレクトリを基準とする（例: /app/data）
+            root_path = base_path.parent
+            if not directory.is_relative_to(root_path):
+                return
+            # base_directoryそのものは削除しない
+            if directory == base_path:
+                return
+
+        try:
+            # ディレクトリが空の場合に削除（base_directoryとroot_path以外）
+            if not any(directory.iterdir()):
+                directory.rmdir()
+                self._logger.debug(f"🗑️ 空ディレクトリ削除: {directory}")
+
+                # 親ディレクトリも確認（再帰的）
+                self._cleanup_empty_directories(directory.parent)
+
+        except OSError as e:
+            self._logger.debug(f"ディレクトリ削除失敗: {directory} - {e}")

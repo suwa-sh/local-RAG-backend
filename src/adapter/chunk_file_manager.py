@@ -1,7 +1,6 @@
 """ChunkFileManager - チャンクファイルの管理"""
 
 import json
-import hashlib
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -26,18 +25,6 @@ class ChunkFileManager:
         # ディレクトリを作成（存在しない場合）
         self._chunks_directory.mkdir(parents=True, exist_ok=True)
 
-    def _generate_file_hash(self, file_path: str) -> str:
-        """
-        ファイルパスからMD5ハッシュを生成する
-
-        Args:
-            file_path: ファイルパス
-
-        Returns:
-            str: MD5ハッシュ（16進数文字列）
-        """
-        return hashlib.md5(file_path.encode("utf-8"), usedforsecurity=False).hexdigest()
-
     def _get_chunk_directory(self, file_path: str) -> Path:
         """
         ファイルパスに対応するチャンクディレクトリを取得する
@@ -48,8 +35,18 @@ class ChunkFileManager:
         Returns:
             Path: チャンクディレクトリのパス
         """
-        file_hash = self._generate_file_hash(file_path)
-        return self._chunks_directory / file_hash
+        # /input/ または /input_work/ から始まる相対パスを抽出
+        relative_path = file_path
+        for prefix in ["/input/", "/input_work/"]:
+            if prefix in file_path:
+                # 最後に出現するプレフィックスの後ろ部分を取得
+                parts = file_path.split(prefix)
+                if len(parts) >= 2:
+                    relative_path = prefix.join(parts[-1:])
+                break
+
+        # data/input_chunks/相対パス/
+        return self._chunks_directory / relative_path
 
     def _get_metadata_file_path(self, file_path: str) -> Path:
         """
@@ -143,7 +140,6 @@ class ChunkFileManager:
             # メタデータファイルを保存
             metadata = {
                 "original_file": file_path,
-                "file_hash": self._generate_file_hash(file_path),
                 "total_chunks": len(chunks),
                 "last_processed_position": last_processed_position,
                 "created_at": datetime.now().isoformat(),
@@ -489,5 +485,35 @@ class ChunkFileManager:
                     f"({deleted_count}ファイル, インデックス: {start_index}〜{start_index + deleted_count - 1})"
                 )
 
+                # 削除後に空ディレクトリをクリーンアップ
+                chunk_dir = self._get_chunk_directory(file_path)
+                self._cleanup_empty_directories(chunk_dir)
+
         except OSError as e:
             self._logger.warning(f"⚠️ エピソードファイル削除失敗: {file_path} - {e}")
+
+    def _cleanup_empty_directories(self, directory: Path) -> None:
+        """
+        空のディレクトリを再帰的に削除する（chunks_directoryまでは削除しない）
+
+        Args:
+            directory: 削除対象のディレクトリ
+        """
+        if not directory.exists() or not directory.is_dir():
+            return
+
+        # chunks_directory以下のディレクトリのみ削除対象
+        if not directory.is_relative_to(self._chunks_directory):
+            return
+
+        try:
+            # ディレクトリが空で、chunks_directoryではない場合に削除
+            if not any(directory.iterdir()) and directory != self._chunks_directory:
+                directory.rmdir()
+                self._logger.debug(f"🗑️ 空ディレクトリ削除: {directory}")
+
+                # 親ディレクトリも確認（再帰的）
+                self._cleanup_empty_directories(directory.parent)
+
+        except OSError as e:
+            self._logger.debug(f"ディレクトリ削除失敗: {directory} - {e}")

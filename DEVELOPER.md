@@ -746,8 +746,8 @@ docker compose down -f docker-compose.dev.yml
 
 ```
 data/input/  : 未処理ファイル
-data/work/   : エピソード登録中（エピソードファイル保存済み）
-data/done/   : 処理完了ファイル
+data/input_work/   : エピソード登録中（エピソードファイル保存済み）
+data/input_done/   : 処理完了ファイル
 ```
 
 ### 処理フロー
@@ -758,7 +758,7 @@ data/done/   : 処理完了ファイル
 1. ファイル読み込み（data/input/）
 2. チャンク生成・エピソード変換（メモリ上）
 3. エピソードファイル保存（data/input_chunks/）
-4. ファイル移動（data/input/ → data/work/）
+4. ファイル移動（data/input/ → data/input_work/）
 ```
 
 #### Phase 2: エピソード登録（エピソード単位で並列）
@@ -767,7 +767,7 @@ data/done/   : 処理完了ファイル
 1. エピソードファイル読み込み
 2. Neo4j登録
 3. エピソードファイル削除（成功時）
-4. 空チェック → ファイル移動（data/work/ → data/done/）
+4. 空チェック → ファイル移動（data/input_work/ → data/input_done/）
 ```
 
 ### 並列処理の考慮
@@ -789,7 +789,7 @@ data/done/   : 処理完了ファイル
    - ファイルの場所 = 処理状態
 
 3. **エラー復旧の確実性**
-   - work/内の残存エピソードファイルから確実に再開
+   - input_work/内の残存エピソードファイルから確実に再開
 
 ## 📋 実装詳細
 
@@ -800,10 +800,10 @@ data/
 ├── input/              # 未処理ファイル
 │   └── subdir/
 │       └── document.pdf
-├── work/               # 処理中ファイル
+├── input_work/         # 処理中ファイル
 │   └── subdir/
 │       └── document.pdf
-├── done/               # 完了ファイル
+├── input_done/         # 完了ファイル
 │   └── subdir/
 │       └── document.pdf
 └── input_chunks/       # エピソードファイル
@@ -822,11 +822,11 @@ data/
 
 #### ケース2: エピソード登録中のエラー
 
-- ファイルは`work/`に存在
+- ファイルは`input_work/`に存在
 - 残存エピソードファイルから再開
 - 成功分は削除済みなので重複なし
 
 #### ケース3: 全処理完了
 
-- ファイルは`done/`に移動
+- ファイルは`input_done/`に移動
 - エピソードファイルは全削除済み

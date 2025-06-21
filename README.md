@@ -99,15 +99,14 @@ tail ./data/logs/ingest-*.log
 | **メール**           | eml, msg, p7s                        |
 | **画像**             | bmp, heic, jpeg, jpg, png, tiff, tif |
 
-### ディレクトリ構成
+#### ディレクトリ構成
 
 ```txt
 data/input/        : 未処理ファイル
-data/work/         : エピソード登録中（エピソードファイル保存済み）
-data/done/         : 処理完了ファイル
+data/input_work/   : エピソード登録中（エピソードファイル保存済み）
+data/input_done/   : 処理完了ファイル
 data/input_chunks/ : エラー時再処理用チャンク分割ファイル
 ```
-
 
 ### 4. ナレッジ検索
 
