@@ -56,7 +56,7 @@ graph TB
 
 ```bash
 # 実行ディレクトリの作成
-mkdir path/to/RAG/
+mkdir -p path/to/RAG/data/input/
 cd path/to/RAG/
 
 # ファイルのダウンロード
@@ -77,6 +77,7 @@ docker compose up -d
 cp -r /path/to/documents/* path/to/RAG/data/imput/
 
 # 一括登録実行
+# ※エラー終了した場合も、同じコマンドで前回失敗したファイルから再開できます。
 docker compose run --rm ingest
 
 # ログ確認
@@ -97,6 +98,16 @@ tail ./data/logs/ingest-*.log
 | **データ**           | csv, tsv                             |
 | **メール**           | eml, msg, p7s                        |
 | **画像**             | bmp, heic, jpeg, jpg, png, tiff, tif |
+
+### ディレクトリ構成
+
+```txt
+data/input/        : 未処理ファイル
+data/work/         : エピソード登録中（エピソードファイル保存済み）
+data/done/         : 処理完了ファイル
+data/input_chunks/ : エラー時再処理用チャンク分割ファイル
+```
+
 
 ### 4. ナレッジ検索
 

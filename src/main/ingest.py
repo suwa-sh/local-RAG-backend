@@ -132,10 +132,10 @@ async def main() -> int:
         print(
             f"🚀 2段階並列処理モードで実行（チャンク: {args.workers}ワーカー, 登録: {config.parallel.register_workers}ワーカー）"
         )
-        result = await usecase.execute_parallel(
+        result = await usecase.execute(
             group_id,
             args.directory,
-            max_workers=args.workers,
+            chunking_workers=args.workers,
             register_workers=config.parallel.register_workers,
         )
 

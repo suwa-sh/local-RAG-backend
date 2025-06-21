@@ -104,7 +104,7 @@ class TestIngest:
         mock_result.total_files = 5
         mock_result.total_chunks = 12
         mock_result.total_episodes = 12
-        mock_usecase.execute_parallel.return_value = mock_result
+        mock_usecase.execute.return_value = mock_result
 
         # ------------------------------
         # 実行 (Act)
@@ -121,13 +121,13 @@ class TestIngest:
         # ------------------------------
         # ユースケースが正しく呼ばれたこと
         mock_create.assert_called_once()
-        mock_usecase.execute_parallel.assert_called_once()
+        mock_usecase.execute.assert_called_once()
 
         # 実行結果の確認
-        call_args = mock_usecase.execute_parallel.call_args
+        call_args = mock_usecase.execute.call_args
         assert call_args[0][0].value == "test-group"  # GroupId
         assert call_args[0][1] == "/docs/test"  # directory
-        assert call_args[1]["max_workers"] == 3  # max_workers (デフォルト値)
+        assert call_args[1]["chunking_workers"] == 3  # chunking_workers (デフォルト値)
 
         # 成功メッセージが出力されたこと
         mock_print.assert_called()
@@ -147,9 +147,7 @@ class TestIngest:
         test_args = ["ingest.py", "/nonexistent"]
 
         mock_usecase = AsyncMock()
-        mock_usecase.execute_parallel.side_effect = FileNotFoundError(
-            "Directory not found"
-        )
+        mock_usecase.execute.side_effect = FileNotFoundError("Directory not found")
 
         # ------------------------------
         # 実行 (Act)
@@ -195,9 +193,7 @@ class TestIngest:
         }
 
         mock_usecase = AsyncMock()
-        mock_usecase.execute_parallel.side_effect = Exception(
-            "Database connection failed"
-        )
+        mock_usecase.execute.side_effect = Exception("Database connection failed")
 
         # ------------------------------
         # 実行 (Act)
@@ -247,7 +243,7 @@ class TestIngest:
         mock_result.total_files = 0
         mock_result.total_chunks = 0
         mock_result.total_episodes = 0
-        mock_usecase.execute_parallel.return_value = mock_result
+        mock_usecase.execute.return_value = mock_result
 
         # ------------------------------
         # 実行 (Act)

@@ -3,7 +3,6 @@
 import logging
 import multiprocessing
 import time
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple, Any, Dict
@@ -14,7 +13,6 @@ from src.adapter.filesystem_document_reader import FileSystemDocumentReader
 from src.adapter.unstructured_document_parser import UnstructuredDocumentParser
 from src.adapter.graphiti_episode_repository import GraphitiEpisodeRepository
 from src.adapter.chunk_file_manager import ChunkFileManager
-from src.main.settings import load_config
 
 
 @dataclass
@@ -30,6 +28,12 @@ class RegisterResult:
 
 class RegisterDocumentUseCase:
     """ドキュメント登録のユースケース"""
+
+    # ディレクトリ名の定数
+    INPUT_DIR = "/input"
+    INPUT_DIR_SLASH = "/input/"
+    WORK_DIR = "/work/"
+    DONE_DIR = "/done"
 
     def __init__(
         self,
@@ -53,74 +57,35 @@ class RegisterDocumentUseCase:
         self._chunk_file_manager = chunk_file_manager or ChunkFileManager()
         self._logger = logging.getLogger(__name__)
 
-    def _determine_optimal_workers(
+    def _determine_chunking_worker_count(
         self, documents: List, requested_workers: int
     ) -> int:
         """
-        ファイルタイプに応じて最適なワーカー数を決定する
+        CPUコア数に基づいてチャンク分割の最適なワーカー数を決定する
 
         Args:
             documents: 処理対象のドキュメントリスト
             requested_workers: リクエストされたワーカー数
 
         Returns:
-            int: 最適化されたワーカー数
+            int: CPUコア数を基準とした最適なワーカー数
         """
         if not documents:
             return 1
 
-        # ファイルタイプの統計を取得
-        file_types = [doc.file_type for doc in documents]
-        type_counter = Counter(file_types)
-        total_files = len(documents)
-
-        # 画像ファイルのタイプ（CPU負荷が高い）
-        image_types = {"png", "jpg", "jpeg", "bmp", "tiff", "tif", "heic"}
-        image_count = sum(
-            count
-            for file_type, count in type_counter.items()
-            if file_type.lower() in image_types
-        )
-
-        # PDF ファイルの数（メモリ使用量が多い）
-        pdf_count = type_counter.get("pdf", 0)
-
-        # 画像ファイルの割合
-        image_ratio = image_count / total_files
-        pdf_ratio = pdf_count / total_files
-
         cpu_count = multiprocessing.cpu_count()
 
-        # 最適なワーカー数を決定
-        if image_ratio > 0.5:  # 画像ファイルが50%以上
-            optimal_workers = min(cpu_count // 2, total_files, 4)
+        # チャンク分割はCPU集約的処理のため、CPUコア数を上限とする
+        optimal_workers = min(cpu_count, requested_workers)
+
+        if optimal_workers != requested_workers:
             self._logger.info(
-                f"📊 ワーカー数調整 - 画像ファイル率 {image_ratio:.1%}: "
-                f"{requested_workers} → {optimal_workers} ワーカー"
+                f"📊 ワーカー数調整: {requested_workers} → {optimal_workers} (CPU{cpu_count}コア制限)"
             )
-        elif pdf_ratio > 0.7:  # PDFファイルが70%以上
-            optimal_workers = min(cpu_count // 2, total_files, 6)
-            self._logger.info(
-                f"📊 ワーカー数調整 - PDF率 {pdf_ratio:.1%}: "
-                f"{requested_workers} → {optimal_workers} ワーカー"
-            )
-        else:  # テキストファイルが多い場合は積極的に並列化
-            optimal_workers = min(cpu_count, total_files, requested_workers)
-            if optimal_workers != requested_workers:
-                self._logger.info(
-                    f"📊 ワーカー数調整 - 軽量ファイル中心: "
-                    f"{requested_workers} → {optimal_workers} ワーカー"
-                )
 
-        # ファイル種別の統計をログ出力
-        self._logger.info(
-            f"📈 ファイル統計 - 総数: {total_files}, 画像: {image_count}, "
-            f"PDF: {pdf_count}, その他: {total_files - image_count - pdf_count}"
-        )
+        return max(1, optimal_workers)
 
-        return max(1, optimal_workers)  # 最低1ワーカーは確保
-
-    def _process_single_document_with_recovery(
+    def _process_single_document(
         self,
         document,
         group_id: GroupId,
@@ -247,13 +212,15 @@ class RegisterDocumentUseCase:
                 self._chunk_file_manager.delete_all_chunks(document.file_path)
 
             # エピソードが生成されている場合、エピソードファイルを保存してwork/に移動
-            if episodes and base_directory and "/input" in document.file_path:
+            if episodes and base_directory and self.INPUT_DIR in document.file_path:
                 try:
                     # エピソードファイル保存
                     self._chunk_file_manager.save_episodes(document.file_path, episodes)
 
                     # ファイル移動 (input → work)
-                    work_directory = base_directory.replace("/input", "/work")
+                    work_directory = base_directory.replace(
+                        self.INPUT_DIR, self.WORK_DIR.rstrip("/")
+                    )
                     new_path = self._file_reader.move_file(
                         document.file_path, work_directory
                     )
@@ -277,68 +244,11 @@ class RegisterDocumentUseCase:
             self._logger.error(error_msg)
             return [], 0, document.file_path
 
-    def _process_single_document(
-        self, document, group_id: GroupId, index: int, total: int
-    ) -> Tuple[List, int, str]:
-        """単一ドキュメントの処理（並列実行用）"""
-        from src.adapter.logging_utils import current_file
-
-        # 現在処理中のファイルをコンテキストに設定
-        current_file.set(document.file_path)
-
-        try:
-            self._logger.info(
-                f"🔄 ファイル処理中 ({index}/{total}): {document.file_name}"
-            )
-
-            # 全体の処理時間計測開始
-            start_time = time.time()
-
-            # ドキュメントを解析
-            parse_start = time.time()
-            elements = self._document_parser.parse(document.file_path)
-            parse_time = time.time() - parse_start
-            self._logger.debug(f"📝 解析完了 - 要素数: {len(elements)}")
-
-            # チャンクに分割
-            chunk_start = time.time()
-            chunks = self._document_parser.split_elements(elements, document)
-            chunk_time = time.time() - chunk_start
-            self._logger.debug(f"🔀 チャンク分割完了 - チャンク数: {len(chunks)}")
-
-            # チャンクからエピソードを作成
-            episode_start = time.time()
-            episodes = []
-            for j, chunk in enumerate(chunks):
-                episode = chunk.to_episode(group_id)
-                episodes.append(episode)
-                self._logger.debug(
-                    f"📋 エピソード作成 ({j + 1}/{len(chunks)}): {episode.name}"
-                )
-            episode_time = time.time() - episode_start
-
-            # 全体の処理時間
-            total_time = time.time() - start_time
-
-            # パフォーマンス情報をログ出力
-            self._logger.info(
-                f"⏱️ パフォーマンス - {document.file_name} ({document.file_type}): "
-                f"解析 {parse_time:.2f}秒, チャンク分割 {chunk_time:.2f}秒, "
-                f"エピソード作成 {episode_time:.2f}秒, 合計 {total_time:.2f}秒"
-            )
-
-            return episodes, len(chunks), None
-
-        except Exception as e:
-            error_msg = f"❌ ファイル処理失敗: {document.file_path} - {e}"
-            self._logger.error(error_msg)
-            return [], 0, document.file_path
-
-    async def execute_parallel(
+    async def execute(
         self,
         group_id: GroupId,
         directory: str,
-        max_workers: int = 3,
+        chunking_workers: int = 3,
         register_workers: int = 2,
     ) -> RegisterResult:
         """
@@ -347,7 +257,7 @@ class RegisterDocumentUseCase:
         Args:
             group_id: グループID
             directory: 対象ディレクトリ
-            max_workers: チャンク処理の最大並列ワーカー数（デフォルト: 3）
+            chunking_workers: チャンク処理の最大並列ワーカー数（デフォルト: 3）
             register_workers: 登録処理の最大並列ワーカー数（デフォルト: 2）
 
         Returns:
@@ -358,39 +268,37 @@ class RegisterDocumentUseCase:
         await self._episode_repository.initialize()
 
         self._logger.info(
-            f"📁 ドキュメント登録開始（2段階並列処理） - group_id: {group_id.value}, directory: {directory}"
+            f"📁 ドキュメント登録開始 - group_id: {group_id.value}, directory: {directory}"
         )
         self._logger.info(
-            f"⚙️ 並列処理設定 - チャンク処理: {max_workers}ワーカー, 登録処理: {register_workers}ワーカー"
+            f"⚙️ 並列処理設定 - チャンク処理: {chunking_workers}ワーカー, 登録処理: {register_workers}ワーカー"
         )
 
-        # 1. ファイル一覧取得（input/とwork/の両方から）
-        input_directory = directory if "/input" in directory else f"{directory}/input"
-        work_directory = (
-            directory.replace("/input", "/work")
-            if "/input" in directory
-            else f"{directory}/work"
-        )
+        # 1. ファイル一覧取得
 
         # input/ディレクトリのファイル
-        input_files = []
-        if Path(input_directory).exists():
-            input_files = self._file_reader.list_supported_files(input_directory)
+        input_directory = (
+            directory if self.INPUT_DIR in directory else f"{directory}{self.INPUT_DIR}"
+        )
+        input_files = self._get_files(input_directory)
 
         # work/ディレクトリのファイル
-        work_files = []
-        if Path(work_directory).exists():
-            work_files = self._file_reader.list_supported_files(work_directory)
+        work_directory = (
+            directory.replace(self.INPUT_DIR, self.WORK_DIR.rstrip("/"))
+            if self.INPUT_DIR in directory
+            else f"{directory}{self.WORK_DIR.rstrip('/')}"
+        )
+        work_files = self._get_files(work_directory)
 
         file_paths = input_files + work_files
         self._logger.info(
             f"📄 対象ファイル数: {len(file_paths)} (input: {len(input_files)}, work: {len(work_files)})"
         )
 
-        # 2. ファイル移動のための基準ディレクトリを設定
+        # 基準ディレクトリを設定
         self._file_reader._base_directory = directory
 
-        # 3. ファイルを読み込み（基準ディレクトリを指定して相対パス計算）
+        # ファイルを読み込み
         documents = self._file_reader.read_documents(file_paths, directory)
 
         self._logger.info(f"📖 読み込み完了ファイル数: {len(documents)}")
@@ -401,106 +309,34 @@ class RegisterDocumentUseCase:
             )
 
         # 3. 最適なワーカー数を決定
-        optimal_workers = self._determine_optimal_workers(documents, max_workers)
+        optimal_workers = self._determine_chunking_worker_count(documents, chunking_workers)
 
-        # 4. 並列処理でドキュメント処理（エラー再処理対応）
+        # 4. 並列処理でドキュメント処理
         all_episodes = []
         total_chunks = 0
         failed_files = []
 
-        # ファイルの場所に応じて処理方法を決定
-        documents_to_process = []
-        documents_in_work = []
+        # ドキュメント処理（チャンク生成から開始）
+        total_chunks = self._documents_to_process(
+            group_id,
+            directory,
+            optimal_workers,
+            all_episodes,
+            failed_files,
+            documents,
+        )
 
-        for doc in documents:
-            # work/ディレクトリのファイルは既にエピソードファイルが存在するはず
-            if "/work/" in doc.file_path:
-                # work/ディレクトリのファイルは既にエピソード化済み
-                if self._chunk_file_manager.has_saved_episodes(doc.file_path):
-                    documents_in_work.append(doc)
-                    self._logger.info(f"🔄 処理中ファイル発見: {doc.file_name} (work/)")
-                else:
-                    # エピソードファイルがない場合は通常処理に戻す
-                    documents_to_process.append(doc)
-                    self._logger.warning(
-                        f"⚠️ エピソードファイルなし: {doc.file_name} (work/) - 再処理します"
-                    )
-            else:
-                # 通常の処理対象
-                documents_to_process.append(doc)
-
-        # 通常のドキュメント処理（チャンク生成から開始）
-        if documents_to_process:
-            with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
-                # 並列実行のためのタスクを準備（統一処理フロー使用）
-                future_to_doc = {
-                    executor.submit(
-                        self._process_single_document_with_recovery,
-                        doc,
-                        group_id,
-                        i,
-                        len(documents_to_process),
-                        directory,  # 基準ディレクトリを渡す
-                    ): doc
-                    for i, doc in enumerate(documents_to_process, 1)
-                }
-
-                # 完了したタスクから結果を取得
-                for future in as_completed(future_to_doc):
-                    episodes, chunks, error_file = future.result()
-
-                    if error_file:
-                        failed_files.append(error_file)
-                    else:
-                        all_episodes.extend(episodes)
-                        total_chunks += chunks
-
-        # 5. 設定読み込み
-        config = load_config()
-        batch_size = config.parallel.episode_batch_size
-
-        # work/ディレクトリのファイルからエピソードを読み込む
-        if documents_in_work:
-            self._logger.info(
-                f"📁 work/ディレクトリのファイル処理: {len(documents_in_work)}ファイル"
-            )
-
-            # work/ディレクトリのファイルはエピソードを読み込むだけ
-            work_episodes_by_file = {}
-            for doc in documents_in_work:
-                try:
-                    # エピソードファイルを読み込み
-                    episodes = self._chunk_file_manager.load_episodes(doc.file_path)
-                    if episodes:
-                        work_episodes_by_file[doc.file_path] = episodes
-                        self._logger.info(
-                            f"📁 エピソード読み込み完了: {doc.file_name} ({len(episodes)}エピソード)"
-                        )
-                except Exception as e:
-                    self._logger.error(
-                        f"❌ エピソードファイル読み込み失敗: {doc.file_path} - {e}"
-                    )
-                    failed_files.append(doc.file_path)
-
-            # work/ディレクトリのエピソードも保存対象に追加
-            if work_episodes_by_file:
-                # 既存の処理と統合するため、documents_to_processに追加
-                # （エピソードは既に work_episodes_by_file に保存されている）
-                await self._save_work_episodes_with_progress(
-                    work_episodes_by_file, batch_size, register_workers
-                )
-
-        # 全エピソードの分割保存（進捗追跡付き）
+        # 全エピソードの分割保存
         if all_episodes:
             self._logger.info(
                 f"💾 エピソード分割保存開始 - 件数: {len(all_episodes)}, "
-                f"バッチサイズ: {batch_size}, 登録ワーカー: {register_workers}"
+                f"登録ワーカー: {register_workers}"
             )
             save_start = time.time()
 
             try:
                 await self._save_episodes_with_progress_tracking(
-                    all_episodes, documents_to_process, batch_size, register_workers
+                    all_episodes, documents, register_workers
                 )
                 save_time = time.time() - save_start
                 self._logger.info(
@@ -513,67 +349,11 @@ class RegisterDocumentUseCase:
                 )
                 # エラーでも処理を継続（部分保存されたエピソードは進捗に記録済み）
 
-        # 6. 処理完了ファイルをdoneディレクトリに移動
-        # 注: 新方式ではwork→doneの移動はエピソード登録時に個別に実行されるため、
-        # ここでは互換性のため残存ファイルのチェックのみ行う
-        done_directory = (
-            directory.replace("/input", "/done")
-            if "/input" in directory
-            else f"{directory}/done"
-        )
-        successful_files = []
-
-        # すべてのドキュメントをチェック（互換性のため）
-        all_processed_documents = documents_to_process
-
-        for doc in all_processed_documents:
-            if doc.file_path not in failed_files:
-                try:
-                    # 既にdone/に移動済みかチェック
-                    if "/done/" in doc.file_path:
-                        successful_files.append(doc.file_path)
-                        continue
-
-                    # チャンクファイルと残存エピソードファイルが残っていないことを確認
-                    has_chunks = self._chunk_file_manager.has_chunk_files(doc.file_path)
-                    has_remaining_episodes = (
-                        self._chunk_file_manager.has_saved_episodes(doc.file_path)
-                    )
-
-                    if not has_chunks and not has_remaining_episodes:
-                        # 古い方式の互換性のため、input/のファイルはdone/に移動
-                        if "/input/" in doc.file_path:
-                            moved_path = self._file_reader.move_file(
-                                doc.file_path, done_directory
-                            )
-                            successful_files.append(moved_path)
-                            self._logger.info(
-                                f"📁 完了ファイル移動: {doc.file_name} → done/"
-                            )
-                        else:
-                            successful_files.append(doc.file_path)
-                    else:
-                        skip_reasons = []
-                        if has_chunks:
-                            skip_reasons.append("チャンクファイル残存")
-                        if has_remaining_episodes:
-                            skip_reasons.append("未処理エピソード残存")
-
-                        self._logger.debug(
-                            f"⚠️ ファイル移動スキップ: {doc.file_name} ({', '.join(skip_reasons)})"
-                        )
-                except Exception as e:
-                    self._logger.warning(
-                        f"⚠️ ファイル移動確認失敗: {doc.file_name} - {e}"
-                    )
-
+        # 処理失敗ファイルのログ出力
         if failed_files:
             self._logger.warning(f"⚠️ 処理失敗ファイル数: {len(failed_files)}")
             for failed_file in failed_files:
                 self._logger.warning(f"  - {failed_file}")
-
-        if successful_files:
-            self._logger.info(f"✅ 完了ファイル移動数: {len(successful_files)}")
 
         # エラー再処理の統計情報を出力
         cache_stats = self._chunk_file_manager.get_cache_stats()
@@ -583,8 +363,11 @@ class RegisterDocumentUseCase:
                 f"{cache_stats['total_chunks']}チャンク, {cache_stats['total_size_mb']}MB"
             )
 
+        # 処理済みドキュメント数を計算
+        total_processed_documents = len(documents)
+
         return RegisterResult(
-            total_files=len(all_processed_documents),
+            total_files=total_processed_documents,
             total_chunks=total_chunks,
             total_episodes=len(all_episodes),
             success=len(failed_files) == 0,  # 失敗ファイルがない場合のみ成功
@@ -593,11 +376,51 @@ class RegisterDocumentUseCase:
             else "",
         )
 
+    def _documents_to_process(
+        self,
+        group_id,
+        directory,
+        optimal_workers,
+        all_episodes,
+        failed_files,
+        documents,
+    ):
+        total_chunks = 0
+        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
+            # 並列実行のためのタスクを準備（統一処理フロー使用）
+            future_to_doc = {
+                executor.submit(
+                    self._process_single_document,
+                    doc,
+                    group_id,
+                    i,
+                    len(documents),
+                    directory,  # 基準ディレクトリを渡す
+                ): doc
+                for i, doc in enumerate(documents, 1)
+            }
+
+            # 完了したタスクから結果を取得
+            for future in as_completed(future_to_doc):
+                episodes, chunks, error_file = future.result()
+
+                if error_file:
+                    failed_files.append(error_file)
+                else:
+                    all_episodes.extend(episodes)
+                    total_chunks += chunks
+        return total_chunks
+
+    def _get_files(self, directory):
+        files = []
+        if Path(directory).exists():
+            files = self._file_reader.list_supported_files(directory)
+        return files
+
     async def _save_episodes_with_progress_tracking(
         self,
         all_episodes: List,
         documents: List,
-        batch_size: int,
         max_concurrent: int,
     ) -> None:
         """
@@ -606,7 +429,6 @@ class RegisterDocumentUseCase:
         Args:
             all_episodes: 保存するエピソードのリスト
             documents: ドキュメントのリスト
-            batch_size: バッチサイズ
             max_concurrent: 最大同時実行数
 
         Raises:
@@ -624,14 +446,13 @@ class RegisterDocumentUseCase:
         # ファイルごとに分割保存を実行
         for file_path, file_episodes in episodes_by_file.items():
             await self._save_file_episodes_with_progress(
-                file_path, file_episodes, batch_size, max_concurrent
+                file_path, file_episodes, max_concurrent
             )
 
     async def _save_file_episodes_with_progress(
         self,
         file_path: str,
         file_episodes: List,
-        batch_size: int,  # 互換性のため保持（エピソード単位保存では未使用）
         max_concurrent: int,
     ) -> None:
         """
@@ -640,14 +461,11 @@ class RegisterDocumentUseCase:
         Args:
             file_path: ファイルパス
             file_episodes: ファイルのエピソードリスト
-            batch_size: バッチサイズ（互換性のため保持、エピソード単位保存では未使用）
             max_concurrent: 最大同時実行数
 
         Raises:
             Exception: 保存に失敗した場合
         """
-        # batch_sizeは互換性のため保持しているが、エピソード単位保存では使用しない
-        _ = batch_size
         total_episodes = len(file_episodes)
 
         # 事前に全エピソードをファイル保存する（Stage 1: 事前保存）
@@ -787,8 +605,7 @@ class RegisterDocumentUseCase:
         # エピソードを保存（ここで例外が発生する可能性がある）
         await self._episode_repository.save(episode)
 
-        # ここまで到達 = 保存成功
-        # 成功時: 対応するエピソードファイルを即座に削除
+        # 保存完了後、対応するエピソードファイルを削除
         self._chunk_file_manager.delete_episode_files(
             file_path, episode_index, episode_index
         )
@@ -798,8 +615,8 @@ class RegisterDocumentUseCase:
         # 全エピソード処理完了チェック（work→done移動）
         if not self._chunk_file_manager.has_saved_episodes(file_path):
             # work/ディレクトリのファイルのみ移動対象
-            if "/work/" in file_path:
-                done_directory = file_path.replace("/work/", "/done/")
+            if self.WORK_DIR in file_path:
+                done_directory = file_path.replace(self.WORK_DIR, f"{self.DONE_DIR}/")
                 # ディレクトリ部分のみ抽出
                 done_dir = str(Path(done_directory).parent)
 
@@ -821,7 +638,6 @@ class RegisterDocumentUseCase:
     async def _save_work_episodes_with_progress(
         self,
         work_episodes_by_file: Dict[str, List],
-        batch_size: int,
         max_concurrent: int,
     ) -> None:
         """
@@ -829,13 +645,12 @@ class RegisterDocumentUseCase:
 
         Args:
             work_episodes_by_file: ファイルパスとエピソードリストの辞書
-            batch_size: バッチサイズ（互換性のため保持）
             max_concurrent: 最大同時実行数
         """
         # ファイルごとにエピソード保存を実行
         for file_path, file_episodes in work_episodes_by_file.items():
             await self._save_file_episodes_with_progress(
-                file_path, file_episodes, batch_size, max_concurrent
+                file_path, file_episodes, max_concurrent
             )
 
     def _extract_source_file_from_episode(self, episode, documents: List) -> str:

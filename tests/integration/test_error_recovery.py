@@ -1,12 +1,10 @@
 """エラー再開テストの統合テスト"""
 
-import asyncio
 import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
-from typing import List, Any
+from unittest.mock import AsyncMock, patch
 
 from src.domain.group_id import GroupId
 from src.usecase.register_document_usecase import RegisterDocumentUseCase
@@ -107,7 +105,7 @@ class TestErrorRecovery:
 
             episode_files = list(chunk_dir.glob("episode_*.json"))
             return len(episode_files)
-        except:
+        except Exception:
             return 0
 
     @pytest.mark.asyncio
@@ -125,10 +123,10 @@ class TestErrorRecovery:
 
         # エラー注入: document_parserでエラー発生
         with patch.object(usecase._document_parser, "parse") as mock_parse:
-            mock_parse.side_effect = Exception("Parse error during chunk generation")
+            mock_parse.side_effect = ValueError("Parse error during chunk generation")
 
             # 初回実行（エラー）
-            result = await usecase.execute_parallel(group_id, directory)
+            await usecase.execute_parallel(group_id, directory)
 
             # ファイルがinput/に残っていることを確認
             input_files = list(test_directories["input"].rglob("*.txt"))
@@ -185,7 +183,7 @@ class TestErrorRecovery:
         group_id = GroupId("test")
 
         # まず正常にwork/状態まで進める
-        result1 = await usecase.execute_parallel(group_id, directory)
+        await usecase.execute_parallel(group_id, directory)
 
         # work/にファイルがあることを確認
         work_files = list(test_directories["work"].rglob("*.txt"))
@@ -238,13 +236,13 @@ class TestErrorRecovery:
         async def mock_save_with_error(episode):
             call_count[0] += 1
             if call_count[0] == 3:  # 3回目の呼び出しでエラー
-                raise Exception("Rate limit exceeded")
+                raise ValueError("Rate limit exceeded")
             return None
 
         mock_episode_repository.save.side_effect = mock_save_with_error
 
         # 実行（部分成功）
-        result = await usecase.execute_parallel(group_id, directory)
+        await usecase.execute_parallel(group_id, directory)
 
         # ファイルがwork/に残っていることを確認
         remaining_work_files = list(test_directories["work"].rglob("*.txt"))
@@ -282,12 +280,11 @@ class TestErrorRecovery:
         additional_file.write_text("追加のテストファイルです。", encoding="utf-8")
 
         # ファイル別にエラーを注入
-        file_error_map = {}
 
         def mock_parse_with_selective_error(file_path):
             file_name = Path(file_path).name
             if file_name == "sample.txt":
-                raise Exception("Chunk generation error for sample.txt")
+                raise ValueError("Chunk generation error for sample.txt")
             # その他のファイルは正常処理
             return usecase._document_parser.parse.__wrapped__(
                 usecase._document_parser, file_path
@@ -299,7 +296,7 @@ class TestErrorRecovery:
             side_effect=mock_parse_with_selective_error,
         ):
             # 初回実行（部分的なエラー）
-            result = await usecase.execute_parallel(group_id, directory)
+            await usecase.execute_parallel(group_id, directory)
 
             # sample.txtはinput/に残り、その他はwork/またはdone/に移動
             input_files = [f.name for f in test_directories["input"].rglob("*.txt")]

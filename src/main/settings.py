@@ -42,15 +42,6 @@ class ChunkConfig:
 
 
 @dataclass
-class RateLimitConfig:
-    """Rate limit設定"""
-
-    max_retries: int = 3
-    default_wait_time: int = 121
-    enable_coordinator: bool = True
-
-
-@dataclass
 class LoggingConfig:
     """ログ設定"""
 
@@ -63,7 +54,6 @@ class ParallelConfig:
 
     chunk_workers: int = 3
     register_workers: int = 2
-    episode_batch_size: int = 20
 
 
 @dataclass
@@ -74,7 +64,6 @@ class AppConfig:
     llm: LLMConfig
     embedding: EmbeddingConfig
     chunk: ChunkConfig
-    rate_limit: RateLimitConfig
     logging: LoggingConfig
     parallel: ParallelConfig
     group_id: str
@@ -148,16 +137,6 @@ def load_config() -> AppConfig:
         overlap=int(os.getenv("CHUNK_OVERLAP", "0")),
     )
 
-    # Rate limit設定（オプション）
-    rate_limit_config = RateLimitConfig(
-        max_retries=int(os.getenv("INGEST_RATE_LIMIT_MAX_RETRIES", "3")),
-        default_wait_time=int(os.getenv("INGEST_RATE_LIMIT_DEFAULT_WAIT_TIME", "121")),
-        enable_coordinator=os.getenv(
-            "INGEST_RATE_LIMIT_ENABLE_COORDINATOR", "true"
-        ).lower()
-        == "true",
-    )
-
     # ログ設定（オプション）
     logging_config = LoggingConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
@@ -165,7 +144,6 @@ def load_config() -> AppConfig:
     parallel_config = ParallelConfig(
         chunk_workers=int(os.getenv("INGEST_CHUNK_WORKERS", "3")),
         register_workers=int(os.getenv("INGEST_REGISTER_WORKERS", "1")),
-        episode_batch_size=int(os.getenv("INGEST_EPISODE_BATCH_SIZE", "20")),
     )
 
     return AppConfig(
@@ -173,7 +151,6 @@ def load_config() -> AppConfig:
         llm=llm_config,
         embedding=embedding_config,
         chunk=chunk_config,
-        rate_limit=rate_limit_config,
         logging=logging_config,
         parallel=parallel_config,
         group_id=os.getenv("GROUP_ID"),

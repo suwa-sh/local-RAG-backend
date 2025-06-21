@@ -185,10 +185,6 @@ class GraphitiLLMConfig(BaseModel):
     model: str = DEFAULT_LLM_MODEL
     small_model: str = SMALL_LLM_MODEL
     temperature: float = 0.0
-    azure_openai_endpoint: str | None = None
-    azure_openai_deployment_name: str | None = None
-    azure_openai_api_version: str | None = None
-    azure_openai_use_managed_identity: bool = False
 
     @classmethod
     def from_env(cls) -> "GraphitiLLMConfig":
@@ -205,62 +201,25 @@ class GraphitiLLMConfig(BaseModel):
         )
         small_model = small_model_env if small_model_env.strip() else SMALL_LLM_MODEL
 
-        azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-        azure_openai_api_version = os.environ.get("AZURE_OPENAI_API_VERSION")
-        azure_openai_deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
-        azure_openai_use_managed_identity = (
-            os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY") or "false"
-        ).lower() == "true"
-
-        if azure_openai_endpoint is None:
-            # Setup for OpenAI API
-            # Log if empty model was provided
-            if model_env == "":
-                logger.debug(
-                    f"MODEL_NAME environment variable not set, using default: {DEFAULT_LLM_MODEL}"
-                )
-            elif not model_env.strip():
-                logger.warning(
-                    f"Empty MODEL_NAME environment variable, using default: {DEFAULT_LLM_MODEL}"
-                )
-
-            return cls(
-                api_key=os.environ.get("OPENAI_API_KEY")
-                or os.environ.get("LLM_MODEL_KEY"),  # local-RAG-backend統合
-                base_url=os.environ.get("LLM_MODEL_URL"),  # local-RAG-backend統合
-                model=model,
-                small_model=small_model,
-                temperature=float(os.environ.get("LLM_TEMPERATURE") or "0.0"),
+        # Setup for OpenAI API
+        # Log if empty model was provided
+        if model_env == "":
+            logger.debug(
+                f"MODEL_NAME environment variable not set, using default: {DEFAULT_LLM_MODEL}"
             )
-        else:
-            # Setup for Azure OpenAI API
-            # Log if empty deployment name was provided
-            if azure_openai_deployment_name is None:
-                logger.error(
-                    "AZURE_OPENAI_DEPLOYMENT_NAME environment variable not set"
-                )
-
-                raise ValueError(
-                    "AZURE_OPENAI_DEPLOYMENT_NAME environment variable not set"
-                )
-            if not azure_openai_use_managed_identity:
-                # api key
-                api_key = os.environ.get("OPENAI_API_KEY", None)
-            else:
-                # Managed identity
-                api_key = None
-
-            return cls(
-                azure_openai_use_managed_identity=azure_openai_use_managed_identity,
-                azure_openai_endpoint=azure_openai_endpoint,
-                api_key=api_key,
-                base_url=None,  # Azure OpenAIではendpointを使用
-                azure_openai_api_version=azure_openai_api_version,
-                azure_openai_deployment_name=azure_openai_deployment_name,
-                model=model,
-                small_model=small_model,
-                temperature=float(os.environ.get("LLM_TEMPERATURE") or "0.0"),
+        elif not model_env.strip():
+            logger.warning(
+                f"Empty MODEL_NAME environment variable, using default: {DEFAULT_LLM_MODEL}"
             )
+
+        return cls(
+            api_key=os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("LLM_MODEL_KEY"),  # local-RAG-backend統合
+            base_url=os.environ.get("LLM_MODEL_URL"),  # local-RAG-backend統合
+            model=model,
+            small_model=small_model,
+            temperature=float(os.environ.get("LLM_TEMPERATURE") or "0.0"),
+        )
 
     @classmethod
     def from_cli_and_env(cls, args: argparse.Namespace) -> "GraphitiLLMConfig":
@@ -330,10 +289,6 @@ class GraphitiEmbedderConfig(BaseModel):
     model: str = DEFAULT_EMBEDDER_MODEL
     api_key: str | None = None
     base_url: str | None = None  # OpenAI API互換エンドポイントのbase_url
-    azure_openai_endpoint: str | None = None
-    azure_openai_deployment_name: str | None = None
-    azure_openai_api_version: str | None = None
-    azure_openai_use_managed_identity: bool = False
 
     @classmethod
     def from_env(cls) -> "GraphitiEmbedderConfig":
@@ -346,48 +301,12 @@ class GraphitiEmbedderConfig(BaseModel):
         )
         model = model_env if model_env.strip() else DEFAULT_EMBEDDER_MODEL
 
-        azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-        azure_openai_api_version = os.environ.get("AZURE_OPENAI_EMBEDDING_API_VERSION")
-        azure_openai_use_managed_identity = (
-            os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY") or "false"
-        ).lower() == "true"
-        if azure_openai_endpoint is not None:
-            # Setup for Azure OpenAI API
-            # Log if empty deployment name was provided
-            azure_openai_deployment_name = os.environ.get(
-                "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
-            )
-            if azure_openai_deployment_name is None:
-                logger.error(
-                    "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME environment variable not set"
-                )
-
-                raise ValueError(
-                    "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME environment variable not set"
-                )
-
-            if not azure_openai_use_managed_identity:
-                # api key
-                api_key = os.environ.get("OPENAI_API_KEY", None)
-            else:
-                # Managed identity
-                api_key = None
-
-            return cls(
-                azure_openai_use_managed_identity=azure_openai_use_managed_identity,
-                azure_openai_endpoint=azure_openai_endpoint,
-                api_key=api_key,
-                base_url=None,  # Azure OpenAIではendpointを使用
-                azure_openai_api_version=azure_openai_api_version,
-                azure_openai_deployment_name=azure_openai_deployment_name,
-            )
-        else:
-            return cls(
-                model=model,
-                api_key=os.environ.get("OPENAI_API_KEY")
-                or os.environ.get("EMBEDDING_MODEL_KEY"),  # local-RAG-backend統合
-                base_url=os.environ.get("EMBEDDING_MODEL_URL"),  # local-RAG-backend統合
-            )
+        return cls(
+            model=model,
+            api_key=os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("EMBEDDING_MODEL_KEY"),  # local-RAG-backend統合
+            base_url=os.environ.get("EMBEDDING_MODEL_URL"),  # local-RAG-backend統合
+        )
 
     def create_client(self) -> EmbedderClient | None:
         # OpenAI API setup
@@ -1212,8 +1131,7 @@ async def initialize_server() -> MCPConfig:
     )
     parser.add_argument(
         "--host",
-        default=os.environ.get("MCP_SERVER_HOST"),
-        help="Host to bind the MCP server to (default: MCP_SERVER_HOST environment variable)",
+        help="Host to bind the MCP server to",
     )
 
     args = parser.parse_args()

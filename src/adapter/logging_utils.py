@@ -44,62 +44,6 @@ class FileContextFilter(logging.Filter):
         return True
 
 
-class FileContextLogger:
-    """ファイルコンテキスト付きロガー"""
-
-    def __init__(self, name: str):
-        """
-        ロガーを初期化する
-
-        Args:
-            name: ロガー名
-        """
-        self.logger = logging.getLogger(name)
-
-    def _log_with_context(
-        self, level: int, msg: str, *args: Any, **kwargs: Any
-    ) -> None:
-        """
-        コンテキスト情報付きでログを出力する
-
-        Args:
-            level: ログレベル
-            msg: メッセージ
-            *args: 追加引数
-            **kwargs: キーワード引数
-        """
-        self.logger.log(level, msg, *args, **kwargs)
-
-    def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """DEBUGレベルでログ出力"""
-        self._log_with_context(logging.DEBUG, msg, *args, **kwargs)
-
-    def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """INFOレベルでログ出力"""
-        self._log_with_context(logging.INFO, msg, *args, **kwargs)
-
-    def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """WARNINGレベルでログ出力"""
-        self._log_with_context(logging.WARNING, msg, *args, **kwargs)
-
-    def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """ERRORレベルでログ出力"""
-        self._log_with_context(logging.ERROR, msg, *args, **kwargs)
-
-
-def get_file_context_logger(name: str) -> FileContextLogger:
-    """
-    ファイルコンテキスト付きロガーを取得する
-
-    Args:
-        name: ロガー名
-
-    Returns:
-        FileContextLogger: コンテキスト付きロガー
-    """
-    return FileContextLogger(name)
-
-
 def setup_parallel_logging(log_level: str = "INFO") -> None:
     """
     並列処理用のログ設定を初期化する

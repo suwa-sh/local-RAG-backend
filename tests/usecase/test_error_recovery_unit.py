@@ -4,7 +4,6 @@ import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from src.adapter.chunk_file_manager import ChunkFileManager
 from src.adapter.filesystem_document_reader import FileSystemDocumentReader

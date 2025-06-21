@@ -29,8 +29,6 @@ class GraphitiEpisodeRepository:
         embedding_api_key: str,
         embedding_base_url: str,
         embedding_model: str,
-        rate_limit_max_retries: int = 3,
-        rate_limit_default_wait_time: int = 121,
     ) -> None:
         """
         GraphitiEpisodeRepositoryを初期化する
@@ -81,8 +79,6 @@ class GraphitiEpisodeRepository:
 
         # Rate limitリトライハンドラーの初期化
         self.retry_handler = RateLimitRetryHandler(
-            max_retries=rate_limit_max_retries,
-            default_wait_time=rate_limit_default_wait_time,
             logger=self._logger,
         )
 
@@ -198,112 +194,3 @@ class GraphitiEpisodeRepository:
             except Exception as e:
                 self._logger.error(f"❌ エピソード保存失敗: {episode.name} - {e}")
                 raise
-
-    async def save_batch(
-        self, episodes: List[Episode], max_concurrent: int = 3
-    ) -> None:
-        """
-        複数のエピソードを並列で一括保存する
-
-        Args:
-            episodes: 保存するエピソードのリスト
-            max_concurrent: 最大同時実行数（デフォルト: 3）
-
-        Raises:
-            Exception: Graphitiでエラーが発生した場合
-        """
-        if not episodes:
-            self._logger.warning("⚠️ 保存対象のエピソードがありません")
-            return
-
-        self._logger.info(f"📦 一括保存開始（並列）: {len(episodes)}件のエピソード")
-
-        # ファイルごとにエピソードをグループ化
-        episodes_by_file = self._group_episodes_by_file(episodes)
-
-        # セマフォで同時実行数を制限
-        semaphore = asyncio.Semaphore(max_concurrent)
-
-        async def save_with_semaphore(
-            episode: Episode, file_path: str, index: int, total: int
-        ):
-            async with semaphore:
-                # ファイルコンテキストを設定
-                from src.adapter.logging_utils import current_file
-
-                current_file.set(file_path)
-
-                self._logger.debug(
-                    f"📝 エピソード保存中 ({index}/{total}): {episode.name}"
-                )
-                await self.save(episode)
-
-        # 全エピソードの保存タスクを作成
-        tasks = []
-        total_episodes = len(episodes)
-        current_index = 0
-
-        for file_path, file_episodes in episodes_by_file.items():
-            self._logger.info(
-                f"📁 ファイル処理開始: {file_path} ({len(file_episodes)}エピソード)"
-            )
-
-            for episode in file_episodes:
-                current_index += 1
-                task = save_with_semaphore(
-                    episode, file_path, current_index, total_episodes
-                )
-                tasks.append(task)
-
-        # 全タスクを並列実行
-        await asyncio.gather(*tasks)
-
-        # キャッシュ統計をログ出力
-        self.entity_cache.log_cache_stats()
-        self._logger.info(f"✅ 一括保存完了（並列）: {len(episodes)}件のエピソード")
-
-    def _group_episodes_by_file(
-        self, episodes: List[Episode]
-    ) -> Dict[str, List[Episode]]:
-        """
-        エピソードをファイルごとにグループ化する
-
-        Args:
-            episodes: エピソードのリスト
-
-        Returns:
-            Dict[str, List[Episode]]: ファイルパスをキーとしたエピソードのグループ
-        """
-        episodes_by_file = {}
-
-        for episode in episodes:
-            file_path = self._extract_file_path_from_source(episode.source_description)
-
-            if file_path not in episodes_by_file:
-                episodes_by_file[file_path] = []
-            episodes_by_file[file_path].append(episode)
-
-        return episodes_by_file
-
-    def _extract_file_path_from_source(self, source_description: str) -> str:
-        """
-        source_descriptionからファイルパスを抽出する
-
-        Args:
-            source_description: ソース説明文字列
-
-        Returns:
-            str: 抽出されたファイルパス
-        """
-        # "Source file: /path/to/file.ext" の形式からパスを抽出
-        if source_description.startswith("Source file: "):
-            return source_description[13:]  # "Source file: " の文字数分をスキップ
-        else:
-            # フォールバック: 説明文字列全体を使用
-            return source_description
-
-    async def close(self) -> None:
-        """
-        Graphitiクライアントを閉じる
-        """
-        await self.client.close()

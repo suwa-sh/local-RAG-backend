@@ -154,30 +154,6 @@ class RateLimitCoordinator:
         """Rate Limit状態をリセット"""
         self._state = RateLimitState()
 
-    def get_current_state(self) -> Dict[str, Any]:
-        """
-        現在のRate Limit状態を取得
-
-        Returns:
-            Dict[str, Any]: 現在の状態情報
-        """
-        return {
-            "is_waiting": self._state.is_waiting,
-            "wait_until": self._state.wait_until.isoformat()
-            if self._state.wait_until
-            else None,
-            "wait_time": self._state.wait_time,
-            "affected_threads": self._state.affected_threads,
-            "trigger_thread_id": self._state.trigger_thread_id,
-            "trigger_error_message": self._state.trigger_error_message,
-        }
-
-    async def force_reset(self) -> None:
-        """Rate Limit状態を強制リセット（テスト・デバッグ用）"""
-        async with self._lock:
-            self._logger.warning("🔧 Rate Limit状態を強制リセット")
-            self._reset_state()
-
 
 # グローバルシングルトンインスタンス
 _rate_limit_coordinator: Optional[RateLimitCoordinator] = None

@@ -57,6 +57,7 @@ services:
     volumes:
       - ./data/input:/app/data/input
       - ./data/input_chunks:/app/data/input_chunks
+      - ./data/work:/app/data/work
       - ./data/done:/app/data/done
       - ./data/logs:/app/data/logs
     networks:

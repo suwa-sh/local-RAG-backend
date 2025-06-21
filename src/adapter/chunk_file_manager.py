@@ -216,23 +216,6 @@ class ChunkFileManager:
             self._logger.error(f"❌ チャンク読み込み失敗: {file_path} - {e}")
             raise
 
-    def delete_chunk_file(self, file_path: str, position: int) -> None:
-        """
-        指定位置のチャンクファイルを削除する
-
-        Args:
-            file_path: 元ファイルパス
-            position: チャンクの位置
-        """
-        chunk_file = self._get_chunk_file_path(file_path, position)
-
-        if chunk_file.exists():
-            try:
-                chunk_file.unlink()
-                self._logger.debug(f"🗑️ チャンクファイル削除: {chunk_file}")
-            except OSError as e:
-                self._logger.warning(f"⚠️ チャンクファイル削除失敗: {chunk_file} - {e}")
-
     def delete_all_chunks(self, file_path: str) -> None:
         """
         指定ファイルのすべてのチャンクファイルを削除する
@@ -281,68 +264,6 @@ class ChunkFileManager:
             self._logger.warning(f"⚠️ メタデータ読み込み失敗: {file_path} - {e}")
             return None
 
-    def update_progress(
-        self, file_path: str, last_processed_position: int, error_message: str = ""
-    ) -> None:
-        """
-        処理進捗を更新する
-
-        Args:
-            file_path: 元ファイルパス
-            last_processed_position: 最後に処理された位置
-            error_message: エラーメッセージ
-        """
-        metadata = self.get_metadata(file_path)
-
-        if metadata:
-            metadata["last_processed_position"] = last_processed_position
-            metadata["updated_at"] = datetime.now().isoformat()
-            if error_message:
-                metadata["error_message"] = error_message
-
-            metadata_file = self._get_metadata_file_path(file_path)
-            try:
-                with open(metadata_file, "w", encoding="utf-8") as f:
-                    json.dump(metadata, f, ensure_ascii=False, indent=2)
-
-                self._logger.debug(
-                    f"📝 進捗更新: {file_path} (位置: {last_processed_position})"
-                )
-
-            except OSError as e:
-                self._logger.warning(f"⚠️ 進捗更新失敗: {file_path} - {e}")
-
-    def list_incomplete_files(self) -> List[str]:
-        """
-        処理が完了していないファイルの一覧を取得する
-
-        Returns:
-            List[str]: 未完了ファイルパスのリスト
-        """
-        incomplete_files = []
-
-        if not self._chunks_directory.exists():
-            return incomplete_files
-
-        for chunk_dir in self._chunks_directory.iterdir():
-            if chunk_dir.is_dir():
-                metadata_file = chunk_dir / "metadata.json"
-
-                if metadata_file.exists():
-                    metadata = self.get_metadata("")  # ダミーパス
-                    if metadata:
-                        # メタデータファイルから元ファイルパスを取得
-                        try:
-                            with open(metadata_file, "r", encoding="utf-8") as f:
-                                data = json.load(f)
-                                original_file = data.get("original_file")
-                                if original_file:
-                                    incomplete_files.append(original_file)
-                        except (OSError, json.JSONDecodeError, KeyError):
-                            continue
-
-        return incomplete_files
-
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         チャンクキャッシュの統計情報を取得する
@@ -361,17 +282,25 @@ class ChunkFileManager:
             if chunk_dir.is_dir():
                 total_files += 1
 
-                for chunk_file in chunk_dir.iterdir():
-                    if chunk_file.is_file() and chunk_file.suffix == ".json":
-                        if chunk_file.name.startswith("chunk_"):
-                            total_chunks += 1
-                        total_size += chunk_file.stat().st_size
+                dir_total_chunks, dir_total_size = self._aggregate_chunk_data(chunk_dir)
+                total_chunks += dir_total_chunks
+                total_size += dir_total_size
 
         return {
             "total_cached_files": total_files,
             "total_chunks": total_chunks,
             "total_size_mb": round(total_size / (1024 * 1024), 2),
         }
+
+    def _aggregate_chunk_data(self, chunk_dir):
+        total_chunks = 0
+        total_size = 0
+        for chunk_file in chunk_dir.iterdir():
+            if chunk_file.is_file() and chunk_file.suffix == ".json":
+                if chunk_file.name.startswith("chunk_"):
+                    total_chunks += 1
+                total_size += chunk_file.stat().st_size
+        return total_chunks, total_size
 
     # ===== エピソードデータ永続化管理 =====
 

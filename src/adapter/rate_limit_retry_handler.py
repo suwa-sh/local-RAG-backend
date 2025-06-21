@@ -85,14 +85,3 @@ class RateLimitRetryHandler:
             total_seconds += int(float(match.group(1)))
 
         return total_seconds if total_seconds > 0 else None
-
-    def is_rate_limit_error(self, error: Exception) -> bool:
-        """Rate limitエラーかどうかを判定
-
-        Args:
-            error: 判定対象のエラー
-
-        Returns:
-            Rate limitエラーの場合True
-        """
-        return isinstance(error, RateLimitError)
