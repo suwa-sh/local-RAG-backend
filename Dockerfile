@@ -9,9 +9,9 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY requirements.lock .
 
-# Install dependencies with CPU-only PyTorch
+# Install dependencies with CPU-only PyTorch for multi-arch
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install torch==2.2.2+cpu torchvision==0.17.2+cpu -f https://download.pytorch.org/whl/torch_stable.html && \
+    pip install --index-url https://download.pytorch.org/whl/cpu torch==2.2.2 torchvision==0.17.2 && \
     pip install "numpy<2.0.0" --force-reinstall && \
     sed '/-e/d' requirements.lock > requirements.txt && \
     pip install --no-cache-dir -r requirements.txt
