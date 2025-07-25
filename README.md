@@ -15,8 +15,9 @@ graph TB
     AIAgent[MCP Client]
 
     subgraph "local-RAG-backend"
-        Ingest[ドキュメント登録<br/>unstructured x graphiti]
-        MCPServer[ナレッジ検索<br/>graphiti MCP Server]
+        Ingest[ドキュメント登録<br/>unstructured]
+        MCPServer[ナレッジ検索<br/>MCP Server]
+        Graphiti[graphiti core]
         Neo4j[Neo4j]
     end
 
@@ -25,12 +26,12 @@ graph TB
 
     User -->|コマンド実行| Ingest
     AIAgent -->|MCP Tools呼び出し| MCPServer
-    Ingest -->|ドキュメント登録| Neo4j
-    MCPServer -->|検索クエリ実行| Neo4j
-    Ingest ---> LLM
-    Ingest ---> Ollama
-    MCPServer ---> LLM
-    MCPServer ---> Ollama
+    Ingest --> Graphiti
+    MCPServer --> Graphiti
+    Graphiti -->|ドキュメント登録| Neo4j
+    Graphiti -->|検索クエリ実行| Neo4j
+    Graphiti ---> LLM
+    Graphiti ---> Ollama
 ```
 
 ## Getting Started

@@ -15,7 +15,6 @@
       "Bash(cat:*)",
       "Bash(mkdir:*)",
       "Bash(timeout:*)",
-      "Bash(git git restore:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git stash:*)",

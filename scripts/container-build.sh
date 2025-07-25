@@ -1,6 +1,16 @@
 #!/bin/bash
 set -eu
 
-docker build --tag suwash/graphiti-ingest:latest .
+# buildxビルダーのセットアップ
+docker buildx create --name multiarch --use || docker buildx use multiarch
 
-docker build --tag suwash/graphiti-mcp-server:latest ./mcp_server/.
+# マルチアーキテクチャビルド（arm64とamd64）
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --tag suwash/graphiti-ingest:latest \
+  --push \
+  .
+
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --tag suwash/graphiti-mcp-server:latest \
+  --push \
+  ./mcp_server/.
