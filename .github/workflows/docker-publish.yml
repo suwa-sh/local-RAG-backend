@@ -21,6 +21,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      # ディスク容量を大幅に確保
+      - name: Free disk space
+        run: |
+          echo "=== Before cleanup ==="
+          df -h
+          
+          # 大容量の不要ツールを削除
+          sudo rm -rf /usr/share/dotnet          # ~17GB
+          sudo rm -rf /opt/ghc                   # ~8.8GB
+          sudo rm -rf /usr/local/share/boost     # ~1.7GB
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"   # ~1.7GB
+          sudo rm -rf /usr/local/lib/android     # ~12GB
+          sudo rm -rf /usr/share/swift           # ~1.2GB
+          
+          # APTキャッシュクリア
+          sudo apt-get clean
+          
+          # Dockerクリーンアップ
+          docker system prune -af
+          
+          echo "=== After cleanup ==="
+          df -h
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
