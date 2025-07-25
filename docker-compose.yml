@@ -27,7 +27,7 @@ services:
       retries: 5
 
   mcp-server:
-    image: suwash/graphiti-mcp-server:latest
+    image: ghcr.io/suwa-sh/graphiti-mcp-server:latest
     container_name: local-rag-graphiti-mcp
     depends_on:
       neo4j:
@@ -44,7 +44,7 @@ services:
       - rag-network
 
   ingest:
-    image: suwash/graphiti-ingest:latest
+    image: ghcr.io/suwa-sh/graphiti-ingest:latest
     container_name: local-rag-ingest
     profiles: ["ingest"] # Only run when explicitly invoked
     depends_on:

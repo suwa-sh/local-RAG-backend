@@ -1,0 +1,9 @@
+# docker-compose override for local development with locally built images
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+
+services:
+  mcp-server:
+    image: graphiti-mcp-server:local
+    
+  ingest:
+    image: graphiti-ingest:local
