@@ -54,6 +54,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **重要**: リポジトリ層のインターフェースは使用せず、アダプター層を直接利用する
 
+> **TODO（将来対応）**: 本来はリポジトリ層（インターフェース）経由にしたい。
+> 現状はユースケース層がアダプター層を直接利用しているが、ドメイン層に
+> リポジトリインターフェースを定義し、アダプター層をその実装として
+> 差し替える構成へ移行する。移行時は上記の「重要」記述とテスト戦略の
+> 該当箇所も更新すること。
+
 ### テスト戦略
 
 #### アダプター層のテスト
@@ -122,7 +128,7 @@ docker compose down
 # n8n.AI Agent設定例
 # MCP Server URL: http://localhost:8000/sse
 # Transport: SSE
-# 利用可能なMCP Tools: 8つ（search_memory_facts等）
+# 利用可能なMCP Tools（search_memory_facts 等）
 
 # 実際のMCP Tools使用確認は n8n.AI Agent から実行
 ```
@@ -136,6 +142,26 @@ docker compose down
 - **環境変数統合**: LLM_MODEL_KEY → OPENAI_API_KEY などの自動マッピング実装済み
 
 ## ■開発コマンド
+
+### Makefileが操作の起点
+
+日常操作は基本的に `Makefile` のターゲット経由で行う（`make help` で一覧）。
+主要ターゲット:
+
+| ターゲット                                               | 内容                                      |
+| -------------------------------------------------------- | ----------------------------------------- |
+| `make setup`                                             | 開発環境の初期セットアップ                |
+| `make test` / `make test-unit` / `make test-integration` | テスト（`test`は統合テスト除外）          |
+| `make check`                                             | fmt + lint + test（**実装完了時に必須**） |
+| `make run DIR=path/to/docs GROUP_ID=test`                | ローカルでドキュメント登録                |
+| `make docker-up` / `make docker-down`                    | 統合環境（Neo4j + MCP Server）の起動/停止 |
+| `make docker-dev-up`                                     | Neo4jのみ起動（ローカル開発用）           |
+| `make doctor` / `make show-env`                          | 環境診断 / 環境変数表示                   |
+| `make deps-update`                                       | 依存関係の更新                            |
+
+単一テストの実行は素のpytestで:
+`rye run pytest tests/domain/test_chunk.py::TestChunk::test_method -v`
+（pytest設定は `pytest.ini`。`--strict-markers`、`tmp/`は除外）
 
 ### プロジェクトセットアップ
 
@@ -181,6 +207,13 @@ qlty fix
 qlty check src/specific_file.py
 ```
 
+**qlty の挙動メモ（ハマりやすい点）**:
+
+- `qlty check`（引数なし／`make lint`）は**差分ベース**。変更した行・ファイルのみ検査するため、既存ファイルを編集すると既存の lint 債務も表面化することがある。引数にファイルを渡すとファイル全体を検査する。
+- プラグイン設定は `.qlty/configs/` に置く（例: `.markdownlint.json`、`.yamllint.yaml`）。ルール単位の無効化は `.qlty/qlty.toml` の `[[exclude]]`（`plugins` + `rules` + **`file_patterns` 必須**）で行う。
+- 日本語ドキュメント向けに markdown の `MD013`（行長80字）/`MD060`（表スタイル）は無効化済み。
+- `mcp_server/**` は vendored のため qlty 対象外（下記）。
+
 ### ビルド・パッケージング
 
 ```bash
@@ -194,6 +227,47 @@ rye sync
 rye show --installed
 ```
 
+### Dockerビルドの注意点（CPU版PyTorch / uv）
+
+`Dockerfile` は `quay.io/unstructured-io/unstructured` をベースにする。重要な落とし穴:
+
+- **ベースイメージ(unstructured)はuvベース構成**。pipは同梱されず、venvは
+  `/app/.venv`（`ENV VIRTUAL_ENV=/app/.venv` を設定し `uv pip install --python` で導入）。
+- **amd64版ベースは `torch+cu128` と nvidia-\* 約4.3GBをベースレイヤーに同梱**
+  している（arm64版には無い）。子レイヤーで`uninstall`してもベースレイヤーの
+  バイトは回収できず、イメージサイズ(amd64 ≈ 7.5GB)は縮まない。これは
+  旧0.17.9でも同様で**ベースイメージ固有**。slim化はシステム依存
+  (poppler/tesseract/libGL)を失うため非推奨。
+- **torchはCPU版に固定する**（プロジェクト方針: CPU版でマルチアーキ対応）。
+  `requirements.lock` は plain な `torch==2.10.0` を指すが、uvは
+  `-r requirements.txt` の再解決でPyPIの **+cu128(CUDA)版** を選び直す
+  （pipは `+cpu` を `==2.10.0` の充足扱いにするがuvはローカルバージョンに厳格）。
+  これを避けるため Dockerfile では **2パス + constraint** で導入する:
+  1. `--index-url https://download.pytorch.org/whl/cpu` で
+     `torch==2.10.0+cpu torchvision==0.25.0+cpu` を明示インストール
+     （`+cpu` wheelはCPU indexにしか存在しないため確実にCPU版が入る）
+  2. `-c torch-cpu.constraints`（+cpu固定）を付けて残りをPyPIから導入
+     （導入済みCPU版で充足され、+cu128への置換が起きない）
+  - 検証: `docker run --rm --entrypoint /app/.venv/bin/python <image> -c
+"import torch; print(torch.__version__, torch.version.cuda)"`
+    → `2.10.0+cpu None` になっていること。
+
+ローカルビルドは `make docker-build`（`scripts/container-build.sh`）。
+`graphiti-ingest:local`（ルートDockerfile）と `graphiti-mcp-server:local`
+（`mcp_server/Dockerfile`）の2イメージをホストアーキ向けにビルドする。
+
+### mcp_server は vendored subproject（getzep/graphiti 流用）
+
+`mcp_server/` は `getzep/graphiti` の MCP Server を流用した独立サブプロジェクト。
+**root とは別物**として扱うこと。
+
+- 独自の `pyproject.toml` / `uv.lock` / ruff 設定（single-quote）を持ち、`main.py` + `src/`（マルチモジュール）+ `config/config.yaml`（`${VAR:default}` で .env 展開）構成。起動は `uv run --no-sync main.py`。
+- **root の qlty 対象外**（`.qlty/qlty.toml` の `exclude_patterns` に `mcp_server/**`）。upstream 追従のため**独自整形しない**こと（再同期の差分ノイズを避ける）。
+- 取り込み元: `getzep/graphiti` タグ `mcp-v1.0.2`（graphiti-core 0.29.2）。ローカル clone は `~/src/github.com/getzep/graphiti`。
+- 本プロジェクト固有の改変（config.yaml の env マッピング / openai LLM の base_url 適用 / cross_encoder の配線 / `search_for_rag` 追加 / SSE 固定 / Neo4j）の詳細は @DEVELOPER.md「MCP Server実装詳細」を参照。
+
+**最新化（再同期）手順**: clone を `git fetch --tags` → 新タグの `mcp_server/{src,main.py,config,pyproject.toml}` を取り込み → 上記の本プロジェクト改変を再適用 → `uv lock` → import スモーク + `make docker-up` 疎通で検証。
+
 ## ■アーキテクチャ概要
 
 ### システム構成
@@ -204,7 +278,7 @@ rye show --installed
 
 ### 主要コンポーネント
 
-1. **MCP Server**: Model Context Protocol準拠の検索サーバー（8つのMCP Tools提供）
+1. **MCP Server**: Model Context Protocol準拠の検索サーバー（MCP Tools提供）
 2. **Graphiti Core**: グラフデータベースとの連携を管理
 3. **Unstructured.io**: ドキュメントの解析とチャンク化
 4. **Neo4j**: グラフデータベース（Vector DB）
@@ -218,6 +292,26 @@ rye show --installed
 - OpenAI LLM: <https://api.openai.com/v1> （推奨：gpt-4o-mini）
 - Ollama Embedder: <http://localhost:11434/v1> （kun432/cl-nagoya-ruri-large）
 - システムライブラリ: poppler (PDF処理), tesseract-ocr (OCR)
+
+### 登録処理の堅牢化コンポーネント（src/adapter/）
+
+登録パイプラインの「big picture」は、ファイル位置による状態管理（@DEVELOPER.md
+参照）とLLM/Embedding呼び出しの堅牢化に集約される。以下は複数ファイルを
+読まないと掴みづらい補助コンポーネント:
+
+- `chunk_file_manager.py`: チャンクを `data/input_chunks/{file_hash}/` に
+  エピソードJSONとして退避し、`input/ → input_work/ → input_done/` の
+  ファイル移動で進捗を表現。**進捗ファイルを持たず、ファイルの場所＝処理状態**。
+  途中失敗しても同じコマンドで残存エピソードから再開でき、DB重複を防ぐ。
+- `rate_limit_retry_handler.py` / `rate_limit_coordinator.py`: OpenAI APIの
+  rate limit対応。retry-afterヘッダー解析＋指数バックオフ。並列ワーカー間で
+  待機を協調させる。
+- `entity_cache.py`: 同一ファイル内のエンティティをキャッシュ
+  （`FileBasedEntityCache`）し、重複生成・並列時の競合を緩和する。
+- `logging_utils.py`: ベンチマーク/分析用のログ出力（`scripts/analyze_api_calls.py`
+  と連動）。
+
+並列度の指針・実測値はパフォーマンスの知見セクションと @DEVELOPER.md を参照。
 
 ## ■テストコードのルール
 

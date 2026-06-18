@@ -4,7 +4,7 @@
 
 ## 特徴
 
-- **幅広いファイル形式に対応**: `unstructured`を利用して、PDF、Office、テキスト、画像など28種類のファイル形式に対応しています。
+- **幅広いファイル形式に対応**: `unstructured`を利用して、PDF、Office、テキスト、画像など多様なファイル形式に対応しています。
 - **MCP検索機能**: `graphiti MCP Server`の実装を流用して、Model Context Protocol対応の検索を提供します。
 - **高度なRAG機能**: `graphiti`を利用して、ベクトル検索 + グラフ検索 + 全文検索の結果を、関係性でリランキングした結果を返します。
 - **時系列の関係性の変化を追跡**: `graphiti`のエピソード機能で、登録したドキュメント内の概念の関係性の変化を追跡できます。
@@ -145,12 +145,13 @@ const nodes = await mcp.call_tool("search_memory_nodes", {
   query: "システム",
   group_ids: ["default"],
   max_nodes: 5,
+  // entity_types: ["Preference"], // 任意: エンティティ種別で絞り込み
 });
 
 // エピソード取得
 const episodes = await mcp.call_tool("get_episodes", {
-  group_id: "default",
-  last_n: 10,
+  group_ids: ["default"],
+  max_episodes: 10,
 });
 
 // エピソード追加
