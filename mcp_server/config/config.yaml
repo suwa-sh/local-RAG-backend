@@ -1,0 +1,46 @@
+# Graphiti MCP Server 設定 (local-RAG-backend 用)
+#
+# 本プロジェクトの .env 変数名にマッピングしている。
+# ${VAR} / ${VAR:default} 形式で環境変数を展開する。
+# upstream(getzep/graphiti mcp-v1.0.2)をベースに、OpenAI互換エンドポイント
+# (LLM_MODEL_URL / EMBEDDING_MODEL_URL)と SSE transport を使う構成に再現。
+
+server:
+  transport: "sse" # 本プロジェクトは SSE 固定 (http://localhost:8000/sse)
+  host: ${MCP_SERVER_HOST:0.0.0.0}
+  port: ${MCP_SERVER_PORT:8000}
+
+llm:
+  provider: "openai" # OpenAI互換エンドポイント
+  model: ${LLM_MODEL_NAME:gpt-4o-mini}
+  max_tokens: 4096
+
+  providers:
+    openai:
+      api_key: ${LLM_MODEL_KEY}
+      api_url: ${LLM_MODEL_URL:https://api.openai.com/v1}
+
+embedder:
+  provider: "openai" # OpenAI互換エンドポイント (Ollama 等)
+  model: ${EMBEDDING_MODEL_NAME:text-embedding-3-small}
+  dimensions: ${EMBEDDING_DIM:1536}
+
+  providers:
+    openai:
+      api_key: ${EMBEDDING_MODEL_KEY}
+      api_url: ${EMBEDDING_MODEL_URL:https://api.openai.com/v1}
+
+database:
+  provider: "neo4j"
+
+  providers:
+    neo4j:
+      uri: ${NEO4J_URI:bolt://neo4j:7687}
+      username: ${NEO4J_USER:neo4j}
+      password: ${NEO4J_PASSWORD:password}
+      database: ${NEO4J_DATABASE:neo4j}
+
+graphiti:
+  group_id: ${GROUP_ID:default}
+  user_id: ${USER_ID:mcp_user}
+  # custom entity types は元実装の既定(無効)に合わせて未定義のままにする
