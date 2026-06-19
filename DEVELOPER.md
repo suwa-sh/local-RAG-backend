@@ -642,6 +642,39 @@ local-RAG-backend/
 - 機能ブランチで開発し、PRでマージ
 - コミットメッセージはconventional commitに従う
 
+#### リリース手順
+
+Docker イメージは GitHub Actions（`.github/workflows/docker-publish.yml`）で
+ghcr.io（`ghcr.io/suwa-sh/graphiti-ingest` / `graphiti-mcp-server`）へ公開する。
+発火条件と付与されるタグ:
+
+- **main への push**: `<ブランチ名>`（=`main`）+ `sha-<short>` のみ。`latest` は更新しない。
+- **`vX.Y.Z` タグの push**: `X.Y.Z` + `X.Y` + `latest` + `sha-<short>` を**同一ビルド（同一 digest）**で公開。
+  - `latest` は `metadata-action` の `latest=auto` により semver タグへ自動付与される。
+    これにより `latest` と `X.Y.Z` は必ず同じイメージを指す。
+
+リリース作業:
+
+1. `pyproject.toml` の `version` を bump（例: 0.2.0）
+2. 変更を PR → main へマージ（`make check` 通過が前提）
+3. main 上でタグを作成・push する
+
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z: <要約>"
+   git push origin vX.Y.Z
+   ```
+
+4. タグ起点の CI 完了後、`:X.Y.Z` / `:X.Y` / `:latest` が同一 digest で公開されることを確認
+
+   ```bash
+   docker buildx imagetools inspect ghcr.io/suwa-sh/graphiti-mcp-server:X.Y.Z --format '{{.Manifest.Digest}}'
+   docker buildx imagetools inspect ghcr.io/suwa-sh/graphiti-mcp-server:latest --format '{{.Manifest.Digest}}'
+   ```
+
+注意: タグは「リリース確定点（新しい workflow を含む main コミット）」に打つこと。
+イメージは linux/amd64・linux/arm64 のマルチアーキで公開される。
+
 ### 環境構築手順
 
 #### 利用者向け（Docker環境）
