@@ -57,15 +57,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # 画像ごとに metadata を生成する。
-      # - main への push: latest + sha
-      # - vX.Y.Z タグの push: X.Y.Z + X.Y + sha（バージョン付きイメージ）
+      # - main への push: <branch名(main)> + sha
+      # - vX.Y.Z タグの push: X.Y.Z + X.Y + latest + sha
+      #   （latest は flavor=latest=auto の既定により semver タグへ同一ビルドで付与される。
+      #    これにより latest と X.Y.Z が必ず同一 digest を指す）
       - name: Extract metadata (graphiti-ingest)
         id: meta_ingest
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-ingest
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
@@ -76,7 +78,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-mcp-server
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
