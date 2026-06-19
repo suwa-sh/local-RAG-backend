@@ -4,221 +4,252 @@
 # last locked with the following flags:
 #   pre: false
 #   features: []
-#   all-features: false
+#   all-features: true
 #   with-sources: false
 #   generate-hashes: false
 #   universal: false
 
 -e file:.
-accelerate==1.7.0
+accelerate==1.14.0
     # via unstructured-inference
-aiofiles==24.1.0
+aiofiles==25.1.0
     # via unstructured-client
+annotated-doc==0.0.4
+    # via typer
 annotated-types==0.7.0
     # via pydantic
-antlr4-python3-runtime==4.9.3
-    # via omegaconf
-anyio==4.9.0
+anyio==4.14.0
     # via httpx
     # via mcp
     # via openai
     # via sse-starlette
     # via starlette
+attrs==26.1.0
+    # via jsonschema
+    # via referencing
 backoff==2.2.1
+    # via posthog
+beautifulsoup4==4.15.0
     # via unstructured
-beautifulsoup4==4.13.4
-    # via unstructured
-cachetools==5.5.2
-    # via google-auth
-certifi==2025.4.26
+blis==1.3.3
+    # via thinc
+catalogue==2.0.10
+    # via spacy
+    # via srsly
+    # via thinc
+certifi==2026.6.17
     # via httpcore
     # via httpx
     # via requests
-cffi==1.17.1
+cffi==2.0.0
     # via cryptography
-chardet==5.2.0
-    # via unstructured
-charset-normalizer==3.4.2
+charset-normalizer==3.4.7
     # via pdfminer-six
     # via requests
-click==8.2.1
-    # via nltk
+    # via unstructured
+click==8.4.1
+    # via huggingface-hub
     # via python-oxmsg
+    # via typer
     # via uvicorn
-coloredlogs==15.0.1
-    # via onnxruntime
-contourpy==1.3.2
+cloudpathlib==0.24.0
+    # via weasel
+confection==1.3.3
+    # via spacy
+    # via thinc
+    # via weasel
+contourpy==1.3.3
     # via matplotlib
-cryptography==45.0.4
+cryptography==49.0.0
+    # via google-auth
+    # via msoffcrypto-tool
     # via pdfminer-six
-    # via unstructured-client
+    # via pyjwt
 cycler==0.12.1
     # via matplotlib
-dataclasses-json==0.6.7
-    # via unstructured
-deprecated==1.2.18
-    # via pikepdf
-diskcache==5.6.3
-    # via graphiti-core
+cymem==2.0.13
+    # via preshed
+    # via spacy
+    # via thinc
 distro==1.9.0
     # via openai
-effdet==0.4.1
-    # via unstructured
-emoji==2.14.1
+    # via posthog
+emoji==2.15.0
     # via unstructured
 et-xmlfile==2.0.0
     # via openpyxl
-falkordb==1.1.2
-    # via graphiti-core
-filelock==3.18.0
+filelock==3.29.4
     # via huggingface-hub
     # via torch
-    # via transformers
+    # via unstructured
 filetype==1.2.0
     # via unstructured
-flatbuffers==25.2.10
+flatbuffers==25.12.19
     # via onnxruntime
-fonttools==4.58.2
+fonttools==4.63.0
     # via matplotlib
-fsspec==2025.5.1
+fsspec==2026.6.0
     # via huggingface-hub
     # via torch
-google-api-core==2.25.1
+google-api-core==2.31.0
     # via google-cloud-vision
-google-auth==2.40.3
+google-auth==2.55.0
     # via google-api-core
     # via google-cloud-vision
-google-cloud-vision==3.10.2
+google-cloud-vision==3.14.0
     # via unstructured
-googleapis-common-protos==1.70.0
+googleapis-common-protos==1.75.0
     # via google-api-core
     # via grpcio-status
-graphiti-core==0.12.0
+graphiti-core==0.29.2
     # via local-rag-backend
-grpcio==1.73.0
+grpcio==1.81.1
     # via google-api-core
+    # via google-cloud-vision
     # via grpcio-status
-grpcio-status==1.73.0
+grpcio-status==1.81.1
     # via google-api-core
 h11==0.16.0
     # via httpcore
     # via uvicorn
-hf-xet==1.1.3
+hf-xet==1.5.1
     # via huggingface-hub
 html5lib==1.1
     # via unstructured
 httpcore==1.0.9
     # via httpx
+    # via unstructured-client
 httpx==0.28.1
+    # via huggingface-hub
     # via mcp
     # via openai
     # via unstructured-client
-httpx-sse==0.4.0
+    # via weasel
+httpx-sse==0.4.3
     # via mcp
-huggingface-hub==0.33.0
+huggingface-hub==1.20.0
     # via accelerate
     # via timm
     # via tokenizers
     # via transformers
     # via unstructured-inference
-humanfriendly==10.0
-    # via coloredlogs
-idna==3.10
+idna==3.18
     # via anyio
     # via httpx
     # via requests
+installer==0.7.0
+    # via unstructured
 jinja2==3.1.6
+    # via spacy
     # via torch
-jiter==0.10.0
+jiter==0.15.0
     # via openai
-joblib==1.5.1
-    # via nltk
-kiwisolver==1.4.8
+jsonschema==4.26.0
+    # via mcp
+jsonschema-specifications==2025.9.1
+    # via jsonschema
+kiwisolver==1.5.0
     # via matplotlib
 langdetect==1.0.9
     # via unstructured
-lxml==5.4.0
+llvmlite==0.47.0
+    # via numba
+lxml==6.1.1
     # via pikepdf
     # via python-docx
     # via python-pptx
     # via unstructured
-markdown==3.8
+markdown==3.10.2
     # via unstructured
-markupsafe==3.0.2
+markdown-it-py==4.2.0
+    # via rich
+markupsafe==3.0.3
     # via jinja2
-marshmallow==3.26.1
-    # via dataclasses-json
-matplotlib==3.10.3
+matplotlib==3.11.0
     # via unstructured-inference
-mcp==1.9.4
+mcp==1.28.0
     # via local-rag-backend
+mdurl==0.1.2
+    # via markdown-it-py
+ml-dtypes==0.5.4
+    # via onnx
+more-itertools==11.1.0
+    # via openai-whisper
 mpmath==1.3.0
     # via sympy
-mypy-extensions==1.1.0
-    # via typing-inspect
-neo4j==5.28.1
+msoffcrypto-tool==6.0.0
+    # via unstructured
+murmurhash==1.0.15
+    # via preshed
+    # via spacy
+    # via thinc
+neo4j==6.2.0
     # via graphiti-core
-nest-asyncio==1.6.0
-    # via unstructured-client
-networkx==3.5
+networkx==3.6.1
     # via torch
     # via unstructured
-nltk==3.9.1
+numba==0.65.1
+    # via openai-whisper
     # via unstructured
-numpy==1.26.4
+numpy==2.4.6
     # via accelerate
+    # via blis
     # via contourpy
     # via graphiti-core
-    # via local-rag-backend
     # via matplotlib
+    # via ml-dtypes
+    # via numba
     # via onnx
     # via onnxruntime
+    # via openai-whisper
     # via opencv-python
     # via pandas
-    # via pycocotools
     # via scipy
+    # via spacy
+    # via thinc
     # via torchvision
     # via transformers
     # via unstructured
     # via unstructured-inference
 olefile==0.47
+    # via msoffcrypto-tool
     # via python-oxmsg
-omegaconf==2.3.0
-    # via effdet
-onnx==1.18.0
-    # via unstructured
+onnx==1.22.0
     # via unstructured-inference
-onnxruntime==1.22.0
-    # via unstructured
+onnxruntime==1.27.0
     # via unstructured-inference
-openai==1.86.0
+openai==2.43.0
     # via graphiti-core
-opencv-python==4.11.0.86
+openai-whisper==20250625
+    # via unstructured
+opencv-python==4.13.0.92
     # via unstructured-inference
 openpyxl==3.1.5
     # via unstructured
-packaging==25.0
+packaging==26.2
     # via accelerate
     # via huggingface-hub
-    # via marshmallow
     # via matplotlib
     # via onnxruntime
     # via pikepdf
+    # via spacy
+    # via thinc
     # via transformers
     # via unstructured-pytesseract
-pandas==2.3.0
+    # via weasel
+pandas==2.3.3
     # via unstructured
     # via unstructured-inference
 pdf2image==1.17.0
     # via unstructured
-pdfminer-six==20250506
+pdfminer-six==20260107
     # via unstructured
     # via unstructured-inference
-pi-heif==0.22.0
+pi-heif==1.4.0
     # via unstructured
-pikepdf==9.8.1
+pikepdf==10.8.0
     # via unstructured
-pillow==11.2.1
+pillow==12.2.0
     # via matplotlib
     # via pdf2image
     # via pi-heif
@@ -226,10 +257,15 @@ pillow==11.2.1
     # via python-pptx
     # via torchvision
     # via unstructured-pytesseract
-proto-plus==1.26.1
+posthog==7.19.2
+    # via graphiti-core
+preshed==3.0.13
+    # via spacy
+    # via thinc
+proto-plus==1.28.0
     # via google-api-core
     # via google-cloud-vision
-protobuf==6.31.1
+protobuf==7.35.1
     # via google-api-core
     # via google-cloud-vision
     # via googleapis-common-protos
@@ -237,172 +273,213 @@ protobuf==6.31.1
     # via onnx
     # via onnxruntime
     # via proto-plus
-psutil==7.0.0
+psutil==7.2.2
     # via accelerate
     # via unstructured
-pyasn1==0.6.1
+pyasn1==0.6.3
     # via pyasn1-modules
-    # via rsa
 pyasn1-modules==0.4.2
     # via google-auth
-pycocotools==2.0.10
-    # via effdet
-pycparser==2.22
+pycparser==3.0
     # via cffi
-pydantic==2.11.5
+pydantic==2.13.4
     # via graphiti-core
     # via mcp
     # via openai
     # via pydantic-settings
+    # via spacy
+    # via thinc
     # via unstructured-client
-pydantic-core==2.33.2
+    # via weasel
+pydantic-core==2.46.4
     # via pydantic
-pydantic-settings==2.9.1
+pydantic-settings==2.14.1
     # via mcp
-pyjwt==2.9.0
-    # via redis
-pypandoc==1.15
+pygments==2.20.0
+    # via rich
+pyjwt==2.13.0
+    # via mcp
+pypandoc-binary==1.17
     # via unstructured
-pyparsing==3.2.3
+pyparsing==3.3.2
     # via matplotlib
-pypdf==5.6.0
+pypdf==6.13.3
     # via unstructured
     # via unstructured-client
-pypdfium2==4.30.1
+pypdfium2==5.10.1
+    # via unstructured-client
     # via unstructured-inference
 python-dateutil==2.9.0.post0
     # via matplotlib
     # via pandas
-python-docx==1.1.2
+python-docx==1.2.0
     # via unstructured
-python-dotenv==1.1.0
+python-dotenv==1.2.2
     # via graphiti-core
     # via local-rag-backend
     # via pydantic-settings
-python-iso639==2025.2.18
+python-iso639==2026.4.20
     # via unstructured
 python-magic==0.4.27
     # via unstructured
-python-multipart==0.0.20
+python-multipart==0.0.32
     # via mcp
-    # via unstructured-inference
 python-oxmsg==0.0.2
     # via unstructured
 python-pptx==1.0.2
     # via unstructured
-pytz==2025.2
+pytz==2026.2
     # via neo4j
     # via pandas
-pyyaml==6.0.2
+pyyaml==6.0.3
     # via accelerate
     # via huggingface-hub
-    # via omegaconf
     # via timm
     # via transformers
-rapidfuzz==3.13.0
+rapidfuzz==3.14.5
     # via unstructured
     # via unstructured-inference
-redis==5.3.0
-    # via falkordb
-regex==2024.11.6
-    # via nltk
+referencing==0.37.0
+    # via jsonschema
+    # via jsonschema-specifications
+regex==2026.5.9
+    # via tiktoken
     # via transformers
-requests==2.32.4
+    # via unstructured
+requests==2.34.2
     # via google-api-core
-    # via huggingface-hub
+    # via posthog
     # via requests-toolbelt
-    # via transformers
+    # via spacy
+    # via tiktoken
     # via unstructured
 requests-toolbelt==1.0.0
     # via unstructured-client
-rsa==4.9.1
-    # via google-auth
-safetensors==0.5.3
+rich==15.0.0
+    # via typer
+rpds-py==2026.5.1
+    # via jsonschema
+    # via referencing
+safetensors==0.8.0
     # via accelerate
     # via timm
     # via transformers
-scipy==1.15.3
+scipy==1.17.1
     # via unstructured-inference
+setuptools==82.0.1
+    # via spacy
+    # via thinc
+    # via torch
+shellingham==1.5.4
+    # via typer
 six==1.17.0
     # via html5lib
     # via langdetect
     # via python-dateutil
+smart-open==7.6.1
+    # via weasel
 sniffio==1.3.1
-    # via anyio
     # via openai
-soupsieve==2.7
+soupsieve==2.8.4
     # via beautifulsoup4
-sse-starlette==2.3.6
+spacy==3.8.14
+    # via unstructured
+spacy-legacy==3.0.12
+    # via spacy
+spacy-loggers==1.0.5
+    # via spacy
+srsly==2.5.3
+    # via spacy
+    # via thinc
+    # via weasel
+sse-starlette==3.4.4
     # via mcp
-starlette==0.47.0
+starlette==1.3.1
     # via mcp
+    # via sse-starlette
 sympy==1.14.0
-    # via onnxruntime
     # via torch
-tenacity==9.1.2
+tenacity==9.1.4
     # via graphiti-core
-timm==1.0.15
-    # via effdet
+thinc==8.3.13
+    # via spacy
+tiktoken==0.13.0
+    # via openai-whisper
+timm==1.0.27
     # via unstructured-inference
-tokenizers==0.21.1
+tokenizers==0.22.2
     # via transformers
-torch==2.2.2
+torch==2.10.0
     # via accelerate
-    # via effdet
+    # via openai-whisper
     # via timm
     # via torchvision
     # via unstructured-inference
-torchvision==0.17.2
-    # via effdet
+torchvision==0.25.0
     # via timm
-tqdm==4.67.1
+tqdm==4.68.3
     # via huggingface-hub
-    # via nltk
     # via openai
+    # via openai-whisper
+    # via spacy
     # via transformers
     # via unstructured
-transformers==4.52.4
+transformers==5.12.1
     # via unstructured-inference
-typing-extensions==4.14.0
+typer==0.25.1
+    # via huggingface-hub
+    # via spacy
+    # via transformers
+    # via weasel
+typing-extensions==4.15.0
     # via anyio
     # via beautifulsoup4
+    # via grpcio
     # via huggingface-hub
+    # via mcp
     # via onnx
     # via openai
+    # via posthog
     # via pydantic
     # via pydantic-core
     # via python-docx
     # via python-oxmsg
     # via python-pptx
+    # via referencing
+    # via starlette
     # via torch
-    # via typing-inspect
     # via typing-inspection
     # via unstructured
-typing-inspect==0.9.0
-    # via dataclasses-json
-typing-inspection==0.4.1
+typing-inspection==0.4.2
+    # via mcp
     # via pydantic
     # via pydantic-settings
-tzdata==2025.2
+tzdata==2026.2
     # via pandas
-unstructured==0.17.2
+unstructured==0.23.1
     # via local-rag-backend
-unstructured-client==0.36.0
+unstructured-client==0.45.0
     # via unstructured
-unstructured-inference==1.0.5
+unstructured-inference==1.6.13
     # via unstructured
 unstructured-pytesseract==0.3.15
     # via unstructured
-urllib3==2.4.0
+urllib3==2.7.0
     # via requests
-uvicorn==0.34.3
+uvicorn==0.49.0
     # via mcp
+wasabi==1.1.3
+    # via spacy
+    # via thinc
+    # via weasel
+weasel==1.0.0
+    # via spacy
 webencodings==0.5.1
     # via html5lib
-wrapt==1.17.2
-    # via deprecated
+wrapt==2.2.1
+    # via smart-open
     # via unstructured
-xlrd==2.0.1
+xlrd==2.0.2
     # via unstructured
-xlsxwriter==3.2.3
+xlsxwriter==3.2.9
     # via python-pptx

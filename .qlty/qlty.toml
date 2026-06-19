@@ -40,6 +40,10 @@ exclude_patterns = [
   "**/templates/**",
   "**/testdata/**",
   "**/vendor/**",
+  # mcp_server は getzep/graphiti から流用した vendored subproject。
+  # 独自の pyproject/ruff 設定(single-quote 等)を持ち、upstream 追従のため
+  # root の qlty 整形/チェック対象から除外する（再同期の差分ノイズを避ける）。
+  "mcp_server/**",
 ]
 
 test_patterns = [
@@ -100,6 +104,12 @@ name = "trufflehog"
 
 [[plugin]]
 name = "yamllint"
+
+# 日本語ドキュメントでは行長80字制限(MD013)・表整形の差分(MD060)が不毛なため無効化する。
+[[exclude]]
+plugins = ["markdownlint"]
+rules = ["MD013", "MD060"]
+file_patterns = ["**/*.md"]
 
 [[ignore]]
 rules = [

@@ -10,19 +10,24 @@ RUN apt-get update && apt-get install -y curl && \
 # Add uv to PATH
 ENV PATH="/root/.local/bin:${PATH}"
 
-ENV MCP_SERVER_HOST="0.0.0.0"
+ENV MCP_SERVER_HOST="0.0.0.0" \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
 
-# Copy pyproject.toml and install dependencies
-COPY pyproject.toml .
-RUN uv sync
+# Install dependencies (lock 固定・dev除外・プロジェクト自体はビルドしない)
+# upstream(mcp-v1.0.2)はマルチモジュール構成だが main.py で src/ を
+# sys.path に追加して直接起動するため、パッケージとしてのビルドは不要。
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-group dev
 
-# Copy application code
-COPY graphiti_mcp_server.py .
+# Copy application code (新レイアウト)
+COPY main.py ./
+COPY src/ ./src/
+COPY config/ ./config/
 
 EXPOSE 8000
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-
 # Command to run the application
-CMD ["uv", "run", "graphiti_mcp_server.py"]
+# main.py が --config 既定で config/config.yaml を読み込む（SSE transport）
+CMD ["uv", "run", "--no-sync", "main.py"]
