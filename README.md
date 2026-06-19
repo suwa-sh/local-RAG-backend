@@ -165,34 +165,12 @@ const addResult = await mcp.call_tool("add_memory", {
 
 ## 設定
 
-### .envファイルの例
+環境変数の一覧と説明・既定値は [.env.example](.env.example) を参照してください（設定はこのファイルで一元管理しています）。
 
-```ini
-# Neo4jデータベース
-NEO4J_URI=bolt://localhost:7687 # docker composeでは不使用です。定義に合わせて上書きされます。
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-
-# LLMモデル
-LLM_MODEL_URL=https://api.openai.com/v1
-LLM_MODEL_NAME=gpt-4o-mini
-LLM_MODEL_KEY=your_openai_api_key
-
-# Rerankモデル
-RERANK_MODEL_NAME=gpt-4.1-nano
-
-# Embeddingモデル
-EMBEDDING_MODEL_URL=http://host.docker.internal:11434/v1
-EMBEDDING_MODEL_NAME=kun432/cl-nagoya-ruri-large:latest
-EMBEDDING_MODEL_KEY=dummy
-
-# テナント識別子
-GROUP_ID=default
-
-# チャンク設定（オプション）
-CHUNK_SIZE_MAX=2000
-CHUNK_SIZE_MIN=200
-CHUNK_OVERLAP=0
+```bash
+# .env.example をコピーして編集
+cp .env.example .env
+vi .env
 ```
 
 ## 既知の課題
