@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - v*.*.*
   workflow_dispatch:
 
 env:
@@ -16,17 +18,17 @@ jobs:
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       # ディスク容量を大幅に確保
       - name: Free disk space
         run: |
           echo "=== Before cleanup ==="
           df -h
-          
+
           # 大容量の不要ツールを削除
           sudo rm -rf /usr/share/dotnet          # ~17GB
           sudo rm -rf /opt/ghc                   # ~8.8GB
@@ -34,54 +36,69 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"   # ~1.7GB
           sudo rm -rf /usr/local/lib/android     # ~12GB
           sudo rm -rf /usr/share/swift           # ~1.2GB
-          
+
           # APTキャッシュクリア
           sudo apt-get clean
-          
+
           # Dockerクリーンアップ
           docker system prune -af
-          
+
           echo "=== After cleanup ==="
           df -h
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Extract metadata
-        id: meta
+
+      # 画像ごとに metadata を生成する。
+      # - main への push: latest + sha
+      # - vX.Y.Z タグの push: X.Y.Z + X.Y + sha（バージョン付きイメージ）
+      - name: Extract metadata (graphiti-ingest)
+        id: meta_ingest
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-ingest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-mcp-server
-      
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-ingest
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Extract metadata (graphiti-mcp-server)
+        id: meta_mcp
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-mcp-server
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
       - name: Build and push graphiti-ingest
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-ingest:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-ingest:${{ github.sha }}
+          tags: ${{ steps.meta_ingest.outputs.tags }}
+          labels: ${{ steps.meta_ingest.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
+
       - name: Build and push graphiti-mcp-server
         uses: docker/build-push-action@v5
         with:
           context: ./mcp_server
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-mcp-server:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/graphiti-mcp-server:${{ github.sha }}
+          tags: ${{ steps.meta_mcp.outputs.tags }}
+          labels: ${{ steps.meta_mcp.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
